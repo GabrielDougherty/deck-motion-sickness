@@ -24,7 +24,7 @@ void RegisterSwapchain(VkDevice device, VkSwapchainKHR swapchain,
 
 void UnregisterSwapchain(VkSwapchainKHR swapchain);
 
-void RenderOverlay(VkSwapchainKHR swapchain, uint32_t imageIndex);
+void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex);
 
 } // namespace overlay
 } // namespace motionsafe
@@ -388,7 +388,7 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
     return true;
 }
 
-void RenderOverlay(VkSwapchainKHR swapchain, uint32_t imageIndex) {
+void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex) {
     auto it = g_swapchainOverlays.find(swapchain);
     if (it == g_swapchainOverlays.end()) {
         return;  // Swapchain not registered yet
@@ -405,12 +405,61 @@ void RenderOverlay(VkSwapchainKHR swapchain, uint32_t imageIndex) {
         overlay.initialized = true;
     }
     
-    // TODO: Record and submit command buffer
-    // For now, just log once
-    static bool logged = false;
-    if (!logged) {
-        std::cout << "[MotionSafe] Overlay initialized and ready to render" << std::endl;
-        logged = true;
+    auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(overlay.device);
+    if (!dispatch) {
+        return;
+    }
+    
+    // Record command buffer for this image
+    VkCommandBuffer cmd = overlay.commandBuffers[imageIndex];
+    
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    
+    if (dispatch->BeginCommandBuffer(cmd, &beginInfo) != VK_SUCCESS) {
+        std::cerr << "[MotionSafe] Failed to begin command buffer" << std::endl;
+        return;
+    }
+    
+    // Begin render pass
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = overlay.renderPass;
+    renderPassInfo.framebuffer = overlay.framebuffers[imageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = {overlay.width, overlay.height};
+    
+    dispatch->CmdBeginRenderPass(cmd, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    
+    // Bind pipeline
+    dispatch->CmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, overlay.pipeline);
+    
+    // Draw fullscreen triangle (3 vertices, no vertex buffer needed)
+    dispatch->CmdDraw(cmd, 3, 1, 0, 0);
+    
+    // End render pass
+    dispatch->CmdEndRenderPass(cmd);
+    
+    if (dispatch->EndCommandBuffer(cmd) != VK_SUCCESS) {
+        std::cerr << "[MotionSafe] Failed to end command buffer" << std::endl;
+        return;
+    }
+    
+    // Submit command buffer to queue
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmd;
+    
+    if (dispatch->QueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+        std::cerr << "[MotionSafe] Failed to submit command buffer" << std::endl;
+        return;
+    }
+    
+    // Wait for queue to finish (simple approach - not optimal for performance)
+    if (dispatch->QueueWaitIdle) {
+        dispatch->QueueWaitIdle(queue);
     }
 }
 

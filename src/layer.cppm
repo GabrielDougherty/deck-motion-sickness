@@ -307,7 +307,7 @@ VkResult QueuePresentImpl(
         uint32_t imageIndex = pPresentInfo->pImageIndices[i];
         
         // Call overlay rendering
-        overlay::RenderOverlay(swapchain, imageIndex);
+        overlay::RenderOverlay(queue, swapchain, imageIndex);
     }
     
     auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(device);
