@@ -54,6 +54,8 @@ struct DeviceDispatchTable {
     PFN_vkDestroyRenderPass DestroyRenderPass;
     PFN_vkCreateFramebuffer CreateFramebuffer;
     PFN_vkDestroyFramebuffer DestroyFramebuffer;
+    PFN_vkCreateImageView CreateImageView;
+    PFN_vkDestroyImageView DestroyImageView;
     PFN_vkCreateShaderModule CreateShaderModule;
     PFN_vkDestroyShaderModule DestroyShaderModule;
     PFN_vkCreateGraphicsPipelines CreateGraphicsPipelines;
@@ -213,6 +215,8 @@ void DispatchManager::InitDeviceDispatchTable(VkDevice device, PFN_vkGetDevicePr
     LOAD_DEVICE_FUNC(DestroyRenderPass);
     LOAD_DEVICE_FUNC(CreateFramebuffer);
     LOAD_DEVICE_FUNC(DestroyFramebuffer);
+    LOAD_DEVICE_FUNC(CreateImageView);
+    LOAD_DEVICE_FUNC(DestroyImageView);
     LOAD_DEVICE_FUNC(CreateShaderModule);
     LOAD_DEVICE_FUNC(DestroyShaderModule);
     LOAD_DEVICE_FUNC(CreateGraphicsPipelines);

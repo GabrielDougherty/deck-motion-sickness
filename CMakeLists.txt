@@ -21,6 +21,32 @@ endif()
 # Find Vulkan SDK
 find_package(Vulkan REQUIRED)
 
+# Find glslc shader compiler
+find_program(GLSLC glslc HINTS ${Vulkan_GLSLC_EXECUTABLE} PATHS ENV VULKAN_SDK PATH_SUFFIXES bin)
+if(NOT GLSLC)
+    message(FATAL_ERROR "glslc not found! Please install the Vulkan SDK.")
+endif()
+
+message(STATUS "Found glslc: ${GLSLC}")
+
+# Shader compilation function
+function(add_shader TARGET SHADER)
+    get_filename_component(SHADER_NAME ${SHADER} NAME)
+    set(SHADER_OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/shaders/${SHADER_NAME}.spv)
+    set(SHADER_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/shaders/${SHADER})
+    
+    add_custom_command(
+        OUTPUT ${SHADER_OUTPUT}
+        COMMAND ${GLSLC} ${SHADER_SOURCE} -o ${SHADER_OUTPUT}
+        DEPENDS ${SHADER_SOURCE}
+        COMMENT "Compiling shader: ${SHADER_NAME}"
+        VERBATIM
+    )
+    
+    set_source_files_properties(${SHADER_OUTPUT} PROPERTIES GENERATED TRUE)
+    target_sources(${TARGET} PRIVATE ${SHADER_OUTPUT})
+endfunction()
+
 # Compiler flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     add_compile_options(-Wall -Wextra -Wpedantic)
@@ -59,6 +85,10 @@ target_include_directories(motionsafe_overlay PRIVATE
 target_link_libraries(motionsafe_overlay
     ${Vulkan_LIBRARIES}
 )
+
+# Compile shaders
+add_shader(motionsafe_overlay placeholder.vert)
+add_shader(motionsafe_overlay placeholder.frag)
 
 # Homebrew LLVM on macOS needs explicit C++ stdlib linking with library path
 # Source - https://stackoverflow.com/a
