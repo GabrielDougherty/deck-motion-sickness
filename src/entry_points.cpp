@@ -1,5 +1,5 @@
 #include "layer.h"
-#include "dispatch_table.h"
+import motionsafe.dispatch_table;
 #include <cstring>
 
 VKAPI_ATTR VkResult VKAPI_CALL vkNegotiateLoaderLayerInterfaceVersion(

@@ -1,9 +1,22 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.28)
 project(MotionSafeLayer VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Enable experimental C++ module support
+set(CMAKE_EXPERIMENTAL_CXX_MODULE_CMAKE_API "2182bf5c-ef0d-489a-91da-49dbc3090d2a")
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+
+# On macOS, ensure SDK paths are available for module scanning
+if(APPLE)
+    execute_process(COMMAND xcrun --show-sdk-path OUTPUT_VARIABLE MACOS_SDK_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(MACOS_SDK_PATH)
+        add_compile_options(-isysroot ${MACOS_SDK_PATH})
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isysroot ${MACOS_SDK_PATH}")
+    endif()
+endif()
 
 # Find Vulkan SDK
 find_package(Vulkan REQUIRED)
@@ -22,20 +35,24 @@ include_directories(
 # Source files
 set(LAYER_SOURCES
     src/layer.cpp
-    src/dispatch_table.cpp
     src/entry_points.cpp
     src/overlay.cpp
 )
 
-set(LAYER_HEADERS
-    include/layer.h
-    include/dispatch_table.h
+# Build shared library
+add_library(motionsafe_overlay SHARED)
+
+target_sources(motionsafe_overlay
+    PRIVATE
+        ${LAYER_SOURCES}
+    PUBLIC
+        FILE_SET CXX_MODULES FILES
+            src/dispatch_table.cppm
 )
 
-# Build shared library
-add_library(motionsafe_overlay SHARED
-    ${LAYER_SOURCES}
-    ${LAYER_HEADERS}
+target_include_directories(motionsafe_overlay PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${Vulkan_INCLUDE_DIRS}
 )
 
 target_link_libraries(motionsafe_overlay
@@ -43,8 +60,9 @@ target_link_libraries(motionsafe_overlay
 )
 
 # Homebrew LLVM on macOS needs explicit C++ stdlib linking with library path
+# Source - https://stackoverflow.com/a
 if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_link_libraries(motionsafe_overlay "-L/opt/homebrew/opt/llvm/lib/c++" "-lc++")
+    target_link_libraries(motionsafe_overlay "-L/opt/homebrew/opt/llvm/lib/c++" "-lc++" "-Wl,-no_warn_duplicate_libraries")
 endif()
 
 # Set output name based on platform
