@@ -36,7 +36,6 @@ include_directories(
 set(LAYER_SOURCES
     src/layer.cpp
     src/entry_points.cpp
-    src/overlay.cpp
 )
 
 # Build shared library
@@ -49,6 +48,7 @@ target_sources(motionsafe_overlay
         FILE_SET CXX_MODULES FILES
             src/dispatch_table.cppm
             src/layer.cppm
+            src/overlay.cppm
 )
 
 target_include_directories(motionsafe_overlay PRIVATE

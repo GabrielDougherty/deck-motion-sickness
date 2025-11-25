@@ -41,6 +41,23 @@ VK_LAYER_EXPORT VKAPI_ATTR void VKAPI_CALL motionsafe_GetDeviceQueue(
     uint32_t queueIndex,
     VkQueue* pQueue);
 
+VK_LAYER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL motionsafe_CreateSwapchainKHR(
+    VkDevice device,
+    const VkSwapchainCreateInfoKHR* pCreateInfo,
+    const VkAllocationCallbacks* pAllocator,
+    VkSwapchainKHR* pSwapchain);
+
+VK_LAYER_EXPORT VKAPI_ATTR void VKAPI_CALL motionsafe_DestroySwapchainKHR(
+    VkDevice device,
+    VkSwapchainKHR swapchain,
+    const VkAllocationCallbacks* pAllocator);
+
+VK_LAYER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL motionsafe_GetSwapchainImagesKHR(
+    VkDevice device,
+    VkSwapchainKHR swapchain,
+    uint32_t* pSwapchainImageCount,
+    VkImage* pSwapchainImages);
+
 VK_LAYER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL motionsafe_QueuePresentKHR(
     VkQueue queue,
     const VkPresentInfoKHR* pPresentInfo);

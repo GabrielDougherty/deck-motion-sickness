@@ -4,10 +4,13 @@ module;
 #include <vulkan/vulkan.h>
 #include <iostream>
 #include <cstring>
+#include <vector>
+#include <unordered_map>
 
 export module motionsafe.layer;
 
 import motionsafe.dispatch_table;
+import motionsafe.overlay;
 
 export namespace motionsafe {
 
@@ -37,6 +40,23 @@ void GetDeviceQueueImpl(
     uint32_t queueIndex,
     VkQueue* pQueue);
 
+VkResult CreateSwapchainImpl(
+    VkDevice device,
+    const VkSwapchainCreateInfoKHR* pCreateInfo,
+    const VkAllocationCallbacks* pAllocator,
+    VkSwapchainKHR* pSwapchain);
+
+void DestroySwapchainImpl(
+    VkDevice device,
+    VkSwapchainKHR swapchain,
+    const VkAllocationCallbacks* pAllocator);
+
+VkResult GetSwapchainImagesImpl(
+    VkDevice device,
+    VkSwapchainKHR swapchain,
+    uint32_t* pSwapchainImageCount,
+    VkImage* pSwapchainImages);
+
 VkResult QueuePresentImpl(
     VkQueue queue,
     const VkPresentInfoKHR* pPresentInfo);
@@ -46,6 +66,16 @@ VkResult QueuePresentImpl(
 module :private;
 
 namespace motionsafe {
+
+// Track swapchain metadata for overlay registration
+struct SwapchainInfo {
+    uint32_t width;
+    uint32_t height;
+    VkFormat format;
+    VkDevice device;
+};
+
+static std::unordered_map<VkSwapchainKHR, SwapchainInfo> g_swapchainInfo;
 
 VkResult CreateInstanceImpl(
     const VkInstanceCreateInfo* pCreateInfo,
@@ -179,6 +209,85 @@ void GetDeviceQueueImpl(
     }
 }
 
+VkResult CreateSwapchainImpl(
+    VkDevice device,
+    const VkSwapchainCreateInfoKHR* pCreateInfo,
+    const VkAllocationCallbacks* pAllocator,
+    VkSwapchainKHR* pSwapchain) {
+    
+    auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(device);
+    if (!dispatch || !dispatch->CreateSwapchainKHR) {
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+    
+    VkResult result = dispatch->CreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
+    
+    if (result == VK_SUCCESS) {
+        std::cout << "[MotionSafe] Swapchain created: " << *pSwapchain 
+                  << " (" << pCreateInfo->imageExtent.width << "x" << pCreateInfo->imageExtent.height << ")" 
+                  << std::endl;
+        
+        // Store swapchain metadata for later registration
+        g_swapchainInfo[*pSwapchain] = SwapchainInfo{
+            pCreateInfo->imageExtent.width,
+            pCreateInfo->imageExtent.height,
+            pCreateInfo->imageFormat,
+            device
+        };
+    }
+    
+    return result;
+}
+
+void DestroySwapchainImpl(
+    VkDevice device,
+    VkSwapchainKHR swapchain,
+    const VkAllocationCallbacks* pAllocator) {
+    
+    std::cout << "[MotionSafe] Swapchain destroyed: " << swapchain << std::endl;
+    
+    // Unregister from overlay system
+    overlay::UnregisterSwapchain(swapchain);
+    
+    // Clean up metadata
+    g_swapchainInfo.erase(swapchain);
+    
+    auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(device);
+    if (dispatch && dispatch->DestroySwapchainKHR) {
+        dispatch->DestroySwapchainKHR(device, swapchain, pAllocator);
+    }
+}
+
+VkResult GetSwapchainImagesImpl(
+    VkDevice device,
+    VkSwapchainKHR swapchain,
+    uint32_t* pSwapchainImageCount,
+    VkImage* pSwapchainImages) {
+    
+    auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(device);
+    if (!dispatch || !dispatch->GetSwapchainImagesKHR) {
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
+    
+    VkResult result = dispatch->GetSwapchainImagesKHR(device, swapchain, pSwapchainImageCount, pSwapchainImages);
+    
+    if (result == VK_SUCCESS && pSwapchainImages) {
+        std::cout << "[MotionSafe] Got " << *pSwapchainImageCount << " swapchain images" << std::endl;
+        
+        // Register swapchain with overlay system using stored metadata
+        auto it = g_swapchainInfo.find(swapchain);
+        if (it != g_swapchainInfo.end()) {
+            std::vector<VkImage> images(pSwapchainImages, pSwapchainImages + *pSwapchainImageCount);
+            overlay::RegisterSwapchain(
+                device, swapchain, images,
+                it->second.width, it->second.height, it->second.format
+            );
+        }
+    }
+    
+    return result;
+}
+
 VkResult QueuePresentImpl(
     VkQueue queue,
     const VkPresentInfoKHR* pPresentInfo) {
@@ -190,6 +299,15 @@ VkResult QueuePresentImpl(
     if (device == VK_NULL_HANDLE) {
         std::cerr << "[MotionSafe] Error: Queue not found in device map!" << std::endl;
         return VK_ERROR_INITIALIZATION_FAILED;
+    }
+    
+    // Render overlay on each swapchain being presented
+    for (uint32_t i = 0; i < pPresentInfo->swapchainCount; ++i) {
+        VkSwapchainKHR swapchain = pPresentInfo->pSwapchains[i];
+        uint32_t imageIndex = pPresentInfo->pImageIndices[i];
+        
+        // Call overlay rendering
+        overlay::RenderOverlay(swapchain, imageIndex);
     }
     
     auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(device);

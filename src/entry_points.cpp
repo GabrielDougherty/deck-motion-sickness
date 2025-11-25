@@ -78,6 +78,18 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(
         return reinterpret_cast<PFN_vkVoidFunction>(motionsafe_GetDeviceQueue);
     }
     
+    if (strcmp(pName, "vkCreateSwapchainKHR") == 0) {
+        return reinterpret_cast<PFN_vkVoidFunction>(motionsafe_CreateSwapchainKHR);
+    }
+    
+    if (strcmp(pName, "vkDestroySwapchainKHR") == 0) {
+        return reinterpret_cast<PFN_vkVoidFunction>(motionsafe_DestroySwapchainKHR);
+    }
+    
+    if (strcmp(pName, "vkGetSwapchainImagesKHR") == 0) {
+        return reinterpret_cast<PFN_vkVoidFunction>(motionsafe_GetSwapchainImagesKHR);
+    }
+    
     if (strcmp(pName, "vkQueuePresentKHR") == 0) {
         return reinterpret_cast<PFN_vkVoidFunction>(motionsafe_QueuePresentKHR);
     }

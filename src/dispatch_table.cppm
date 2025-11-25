@@ -26,14 +26,47 @@ struct DeviceDispatchTable {
     PFN_vkGetDeviceQueue GetDeviceQueue;
     PFN_vkQueueSubmit QueueSubmit;
     PFN_vkQueuePresentKHR QueuePresentKHR;
+    
+    // Swapchain functions
+    PFN_vkCreateSwapchainKHR CreateSwapchainKHR;
+    PFN_vkDestroySwapchainKHR DestroySwapchainKHR;
+    PFN_vkGetSwapchainImagesKHR GetSwapchainImagesKHR;
+    PFN_vkAcquireNextImageKHR AcquireNextImageKHR;
+    
+    // Command buffer functions
     PFN_vkCreateCommandPool CreateCommandPool;
     PFN_vkDestroyCommandPool DestroyCommandPool;
     PFN_vkAllocateCommandBuffers AllocateCommandBuffers;
     PFN_vkFreeCommandBuffers FreeCommandBuffers;
     PFN_vkBeginCommandBuffer BeginCommandBuffer;
     PFN_vkEndCommandBuffer EndCommandBuffer;
+    
+    // Synchronization
     PFN_vkQueueWaitIdle QueueWaitIdle;
     PFN_vkDeviceWaitIdle DeviceWaitIdle;
+    PFN_vkCreateFence CreateFence;
+    PFN_vkDestroyFence DestroyFence;
+    PFN_vkWaitForFences WaitForFences;
+    PFN_vkResetFences ResetFences;
+    
+    // Pipeline and rendering (we'll need these for overlay)
+    PFN_vkCreateRenderPass CreateRenderPass;
+    PFN_vkDestroyRenderPass DestroyRenderPass;
+    PFN_vkCreateFramebuffer CreateFramebuffer;
+    PFN_vkDestroyFramebuffer DestroyFramebuffer;
+    PFN_vkCreateShaderModule CreateShaderModule;
+    PFN_vkDestroyShaderModule DestroyShaderModule;
+    PFN_vkCreateGraphicsPipelines CreateGraphicsPipelines;
+    PFN_vkDestroyPipeline DestroyPipeline;
+    PFN_vkCreatePipelineLayout CreatePipelineLayout;
+    PFN_vkDestroyPipelineLayout DestroyPipelineLayout;
+    
+    // Command buffer recording
+    PFN_vkCmdBeginRenderPass CmdBeginRenderPass;
+    PFN_vkCmdEndRenderPass CmdEndRenderPass;
+    PFN_vkCmdBindPipeline CmdBindPipeline;
+    PFN_vkCmdDraw CmdDraw;
+    PFN_vkCmdPipelineBarrier CmdPipelineBarrier;
 };
 
 class DispatchManager {
@@ -152,14 +185,47 @@ void DispatchManager::InitDeviceDispatchTable(VkDevice device, PFN_vkGetDevicePr
     LOAD_DEVICE_FUNC(GetDeviceQueue);
     LOAD_DEVICE_FUNC(QueueSubmit);
     LOAD_DEVICE_FUNC(QueuePresentKHR);
+    
+    // Swapchain
+    LOAD_DEVICE_FUNC(CreateSwapchainKHR);
+    LOAD_DEVICE_FUNC(DestroySwapchainKHR);
+    LOAD_DEVICE_FUNC(GetSwapchainImagesKHR);
+    LOAD_DEVICE_FUNC(AcquireNextImageKHR);
+    
+    // Command buffers
     LOAD_DEVICE_FUNC(CreateCommandPool);
     LOAD_DEVICE_FUNC(DestroyCommandPool);
     LOAD_DEVICE_FUNC(AllocateCommandBuffers);
     LOAD_DEVICE_FUNC(FreeCommandBuffers);
     LOAD_DEVICE_FUNC(BeginCommandBuffer);
     LOAD_DEVICE_FUNC(EndCommandBuffer);
+    
+    // Synchronization
     LOAD_DEVICE_FUNC(QueueWaitIdle);
     LOAD_DEVICE_FUNC(DeviceWaitIdle);
+    LOAD_DEVICE_FUNC(CreateFence);
+    LOAD_DEVICE_FUNC(DestroyFence);
+    LOAD_DEVICE_FUNC(WaitForFences);
+    LOAD_DEVICE_FUNC(ResetFences);
+    
+    // Pipeline and rendering
+    LOAD_DEVICE_FUNC(CreateRenderPass);
+    LOAD_DEVICE_FUNC(DestroyRenderPass);
+    LOAD_DEVICE_FUNC(CreateFramebuffer);
+    LOAD_DEVICE_FUNC(DestroyFramebuffer);
+    LOAD_DEVICE_FUNC(CreateShaderModule);
+    LOAD_DEVICE_FUNC(DestroyShaderModule);
+    LOAD_DEVICE_FUNC(CreateGraphicsPipelines);
+    LOAD_DEVICE_FUNC(DestroyPipeline);
+    LOAD_DEVICE_FUNC(CreatePipelineLayout);
+    LOAD_DEVICE_FUNC(DestroyPipelineLayout);
+    
+    // Command buffer recording
+    LOAD_DEVICE_FUNC(CmdBeginRenderPass);
+    LOAD_DEVICE_FUNC(CmdEndRenderPass);
+    LOAD_DEVICE_FUNC(CmdBindPipeline);
+    LOAD_DEVICE_FUNC(CmdDraw);
+    LOAD_DEVICE_FUNC(CmdPipelineBarrier);
     
     #undef LOAD_DEVICE_FUNC
     
