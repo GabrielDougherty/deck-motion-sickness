@@ -6,35 +6,48 @@ A minimal Vulkan implicit layer for anti-motion-sickness overlay, designed for S
 
 ```
 deck-motion-sickness/
-├── CMakeLists.txt
+├── CMakeLists.txt               # Build configuration with C++23 modules support
+├── setup-vulkan-env.sh          # Script to set up Vulkan environment for testing
+├── layer_manifest.json.in       # Layer manifest template
+├── .gitignore                   # Git ignore patterns
 ├── include/
-│   ├── layer.h              # Layer entry points and exports
-│   └── dispatch_table.h     # Instance/device dispatch tables
+│   └── layer.h                  # C header for layer entry points
 ├── src/
-│   ├── layer.cpp            # Core layer hooks (CreateInstance, CreateDevice, QueuePresent)
-│   ├── dispatch_table.cpp   # Dispatch table management
-│   ├── entry_points.cpp     # vkGetInstanceProcAddr/vkGetDeviceProcAddr
-│   └── overlay.cpp          # Overlay rendering (placeholder)
+│   ├── dispatch_table.cppm      # C++23 module: dispatch table management
+│   ├── layer.cppm               # C++23 module: layer implementation
+│   ├── layer.cpp                # Thin C wrapper calling module functions
+│   ├── entry_points.cpp         # vkGetInstanceProcAddr/vkGetDeviceProcAddr
+│   └── overlay.cpp              # Overlay rendering (placeholder)
+├── scripts/
+│   └── update_loader_settings.py # Python script to update Vulkan loader settings
 ├── shaders/
-│   ├── placeholder.vert     # Placeholder vertex shader
-│   └── placeholder.frag     # Placeholder fragment shader
-├── layer_manifest.json.in   # Layer manifest template
+│   ├── placeholder.vert         # Placeholder vertex shader
+│   └── placeholder.frag         # Placeholder fragment shader
+├── build/
+│   ├── libmotionsafe_overlay.dylib          # Compiled layer library
+│   └── VK_LAYER_MOTIONSAFE_overlay.json     # Generated layer manifest
 └── README.md
 ```
+
+### Key Features
+- **C++23 Modules**: Modern modular architecture with `dispatch_table.cppm` and `layer.cppm`
+- **Clean Separation**: C++ implementation in modules, thin C wrapper for Vulkan loader
+- **Homebrew LLVM**: Uses Clang 21+ with full C++23 support
+- **clangd Integration**: IntelliSense support for C++ modules
 
 ## Requirements
 
 ### macOS (Development)
-- macOS 10.15+
-- Xcode Command Line Tools (for clang)
-- CMake 3.20+
+- macOS 14+ (for C++23 support)
+- Homebrew LLVM Clang 21+ (for C++ modules)
+- CMake 3.28+ (for C++ module support)
 - Ninja build system
-- Vulkan SDK with MoltenVK
+- Vulkan SDK 1.4+ with MoltenVK
 
 ### Linux/Steam Deck (Production)
 - Linux kernel 5.x+
-- Clang or GCC
-- CMake 3.20+
+- Clang 17+ or GCC 14+ (for C++23 modules)
+- CMake 3.28+
 - Ninja
 - Vulkan SDK
 
@@ -47,25 +60,24 @@ deck-motion-sickness/
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-2. **Install build tools**:
+2. **Install Homebrew LLVM and build tools**:
 ```bash
-brew install cmake ninja
+brew install llvm cmake ninja
 ```
 
 3. **Install Vulkan SDK**:
    - Download from: https://vulkan.lunarg.com/sdk/home
-   - Or use Homebrew:
+   - Install to `~/VulkanSDK/<version>/`
+
+4. **Install testing tools** (optional):
 ```bash
-brew install --cask vulkan-sdk
+brew install vulkan-tools  # Provides vkcube for testing
 ```
 
-4. **Set up environment** (add to `~/.zshrc`):
+5. **Set up environment**:
 ```bash
-export VULKAN_SDK="$HOME/VulkanSDK/<version>/macOS"
-export PATH="$VULKAN_SDK/bin:$PATH"
-export DYLD_LIBRARY_PATH="$VULKAN_SDK/lib:$DYLD_LIBRARY_PATH"
-export VK_ICD_FILENAMES="$VULKAN_SDK/share/vulkan/icd.d/MoltenVK_icd.json"
-export VK_LAYER_PATH="$VULKAN_SDK/share/vulkan/explicit_layer.d"
+# Source the setup script in your shell
+source setup-vulkan-env.sh
 ```
 
 ### Linux/Steam Deck
@@ -83,17 +95,55 @@ sudo apt install cmake ninja-build clang vulkan-tools libvulkan-dev
 ### macOS
 
 ```bash
-# Create build directory
-mkdir build && cd build
+# Set up Vulkan environment
+source setup-vulkan-env.sh
 
-# Configure with CMake
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Release ..
+# Create build directory
+mkdir -p build && cd build
+
+# Configure with CMake (using Homebrew LLVM)
+cmake -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
+  -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
+  ..
 
 # Build
 ninja
+```
 
-# Install (copies to build directory for testing)
+The build produces:
+- `libmotionsafe_overlay.dylib` - The layer library
+- `VK_LAYER_MOTIONSAFE_overlay.json` - The layer manifest
+
+### Installing the Layer (macOS)
+
+The layer can be installed to your user's local Vulkan directory:
+
+```bash
+cd build
 ninja install
+```
+
+This will:
+- Install `libmotionsafe_overlay.dylib` to `~/.local/lib/`
+- Install `VK_LAYER_MOTIONSAFE_overlay.json` to `~/.local/share/vulkan/explicit_layer.d/`
+- Automatically update `~/.local/share/vulkan/loader_settings.d/vk_loader_settings.json` (if it exists)
+
+The manifest will be configured with the absolute path to the library, so it will work from anywhere.
+
+**Verifying Installation:**
+```bash
+# Check if files were installed
+ls ~/.local/lib/libmotionsafe_overlay.dylib
+ls ~/.local/share/vulkan/explicit_layer.d/VK_LAYER_MOTIONSAFE_overlay.json
+```
+
+**Uninstalling:**
+```bash
+rm ~/.local/lib/libmotionsafe_overlay.dylib
+rm ~/.local/share/vulkan/explicit_layer.d/VK_LAYER_MOTIONSAFE_overlay.json
+# Manually remove from loader settings if needed
 ```
 
 ### Linux
@@ -116,24 +166,31 @@ sudo ninja install
 
 ### macOS Testing with vkcube
 
-1. **Build the layer** (see above)
+1. **Build and install the layer** (see Building section above)
 
-2. **Set up layer environment**:
+2. **Set up Vulkan environment**:
 ```bash
-export VK_INSTANCE_LAYERS=VK_LAYER_MOTIONSAFE_overlay
-export VK_LAYER_PATH=/Users/gabriel/ws/deck-motion-sickness/build
+source setup-vulkan-env.sh
 ```
 
-3. **Run vkcube** (included with Vulkan SDK):
+3. **Run vkcube with the layer**:
 ```bash
-vkcube
+# Using Homebrew vulkan-tools vkcube
+VK_INSTANCE_LAYERS="VK_LAYER_MOTIONSAFE_overlay" \
+  /opt/homebrew/Cellar/vulkan-tools/1.4.328.1/cube/vkcube.app/Contents/MacOS/vkcube
+
+# Or use VulkanSDK vkcube if available
+VK_INSTANCE_LAYERS="VK_LAYER_MOTIONSAFE_overlay" \
+  ~/VulkanSDK/1.4.328.1/Applications/vkcube.app/Contents/MacOS/vkcube
 ```
 
 4. **Expected output**:
 You should see console output like:
 ```
+Selected WSI platform: metal
 [MotionSafe] vkCreateInstance called
 [MotionSafe] Instance created successfully
+Selected GPU 0: Apple M4 Pro, type: IntegratedGpu
 [MotionSafe] vkCreateDevice called
 [MotionSafe] Device created successfully
 [MotionSafe] vkQueuePresentKHR called
@@ -141,22 +198,23 @@ You should see console output like:
 ...
 ```
 
-### Verifying Layer Loading
+### Verifying Layer Installation
 
-Check if your layer is recognized:
+Check if your layer is recognized by the Vulkan loader:
 ```bash
-vulkaninfo --layers | grep -i motionsafe
+# List all available layers
+vulkaninfo --summary | grep -A5 "Layers"
+
+# Or check with loader debug output
+VK_LOADER_DEBUG=all vulkaninfo 2>&1 | grep MOTIONSAFE
 ```
 
 ### Testing with Other Vulkan Applications
 
 Try with any Vulkan application:
 ```bash
-export VK_INSTANCE_LAYERS=VK_LAYER_MOTIONSAFE_overlay
-export VK_LAYER_PATH=/path/to/build
-
-# Run your Vulkan app
-./your_vulkan_app
+source setup-vulkan-env.sh
+VK_INSTANCE_LAYERS="VK_LAYER_MOTIONSAFE_overlay" your_vulkan_app
 ```
 
 ## Steam Deck Deployment

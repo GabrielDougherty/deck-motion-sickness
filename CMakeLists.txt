@@ -83,10 +83,24 @@ endif()
 
 # Configure layer manifest
 if(APPLE)
-    set(LIBRARY_PATH "./libmotionsafe_overlay.dylib")
+    set(LIBRARY_EXTENSION ".dylib")
 elseif(UNIX)
-    set(LIBRARY_PATH "./libmotionsafe_overlay.so")
+    set(LIBRARY_EXTENSION ".so")
 endif()
+
+# Determine installation paths
+if(APPLE)
+    # macOS: Install to user's local directory by default
+    set(LAYER_INSTALL_DIR "$ENV{HOME}/.local/share/vulkan/explicit_layer.d" CACHE PATH "Layer manifest installation directory")
+    set(LIBRARY_INSTALL_DIR "$ENV{HOME}/.local/lib" CACHE PATH "Library installation directory")
+elseif(UNIX)
+    # Linux: Install to system directories
+    set(LAYER_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/share/vulkan/implicit_layer.d" CACHE PATH "Layer manifest installation directory")
+    set(LIBRARY_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/lib" CACHE PATH "Library installation directory")
+endif()
+
+# Set the library path in the manifest
+set(LIBRARY_PATH "${LIBRARY_INSTALL_DIR}/libmotionsafe_overlay${LIBRARY_EXTENSION}")
 
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/layer_manifest.json.in
@@ -95,21 +109,32 @@ configure_file(
 )
 
 # Installation rules
-if(UNIX AND NOT APPLE)
-    install(TARGETS motionsafe_overlay
-        LIBRARY DESTINATION lib
-    )
-    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_MOTIONSAFE_overlay.json
-        DESTINATION share/vulkan/implicit_layer.d
-    )
-else()
-    # For macOS, just copy to build directory for local testing
-    install(TARGETS motionsafe_overlay
-        LIBRARY DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
-    )
-    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_MOTIONSAFE_overlay.json
-        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
-    )
+install(TARGETS motionsafe_overlay
+    LIBRARY DESTINATION ${LIBRARY_INSTALL_DIR}
+)
+
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_MOTIONSAFE_overlay.json
+    DESTINATION ${LAYER_INSTALL_DIR}
+)
+
+# Post-install script to update loader settings (macOS only)
+if(APPLE)
+    install(CODE "
+        message(STATUS \"Updating Vulkan loader settings...\")
+        execute_process(
+            COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/scripts/update_loader_settings.py
+            RESULT_VARIABLE UPDATE_RESULT
+            OUTPUT_VARIABLE UPDATE_OUTPUT
+            ERROR_VARIABLE UPDATE_ERROR
+        )
+        if(UPDATE_RESULT EQUAL 0)
+            message(STATUS \"\${UPDATE_OUTPUT}\")
+        else()
+            message(WARNING \"Failed to update loader settings: \${UPDATE_ERROR}\")
+            message(STATUS \"You may need to manually add the layer to:\")
+            message(STATUS \"  $ENV{HOME}/.local/share/vulkan/loader_settings.d/vk_loader_settings.json\")
+        endif()
+    ")
 endif()
 
 # Print configuration
