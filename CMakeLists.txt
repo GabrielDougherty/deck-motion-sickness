@@ -48,6 +48,7 @@ target_sources(motionsafe_overlay
     PUBLIC
         FILE_SET CXX_MODULES FILES
             src/dispatch_table.cppm
+            src/layer.cppm
 )
 
 target_include_directories(motionsafe_overlay PRIVATE
