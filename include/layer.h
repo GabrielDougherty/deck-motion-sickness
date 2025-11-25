@@ -35,6 +35,12 @@ VK_LAYER_EXPORT VKAPI_ATTR void VKAPI_CALL motionsafe_DestroyDevice(
     VkDevice device,
     const VkAllocationCallbacks* pAllocator);
 
+VK_LAYER_EXPORT VKAPI_ATTR void VKAPI_CALL motionsafe_GetDeviceQueue(
+    VkDevice device,
+    uint32_t queueFamilyIndex,
+    uint32_t queueIndex,
+    VkQueue* pQueue);
+
 VK_LAYER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL motionsafe_QueuePresentKHR(
     VkQueue queue,
     const VkPresentInfoKHR* pPresentInfo);

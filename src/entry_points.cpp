@@ -74,6 +74,10 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(
         return reinterpret_cast<PFN_vkVoidFunction>(motionsafe_DestroyDevice);
     }
     
+    if (strcmp(pName, "vkGetDeviceQueue") == 0) {
+        return reinterpret_cast<PFN_vkVoidFunction>(motionsafe_GetDeviceQueue);
+    }
+    
     if (strcmp(pName, "vkQueuePresentKHR") == 0) {
         return reinterpret_cast<PFN_vkVoidFunction>(motionsafe_QueuePresentKHR);
     }

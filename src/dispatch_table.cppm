@@ -51,6 +51,11 @@ public:
     void InitInstanceDispatchTable(VkInstance instance, PFN_vkGetInstanceProcAddr gpa);
     void InitDeviceDispatchTable(VkDevice device, PFN_vkGetDeviceProcAddr gpa);
 
+    // Queue to device mapping
+    void SetQueueDevice(VkQueue queue, VkDevice device);
+    VkDevice GetQueueDevice(VkQueue queue);
+    void RemoveQueue(VkQueue queue);
+
 private:
     DispatchManager() = default;
     ~DispatchManager() = default;
@@ -59,8 +64,10 @@ private:
 
     std::unordered_map<VkInstance, InstanceDispatchTable> instance_dispatch_map_;
     std::unordered_map<VkDevice, DeviceDispatchTable> device_dispatch_map_;
+    std::unordered_map<VkQueue, VkDevice> queue_to_device_map_;
     std::mutex instance_mutex_;
     std::mutex device_mutex_;
+    std::mutex queue_mutex_;
 };
 
 } // namespace motionsafe
@@ -157,6 +164,25 @@ void DispatchManager::InitDeviceDispatchTable(VkDevice device, PFN_vkGetDevicePr
     #undef LOAD_DEVICE_FUNC
     
     SetDeviceDispatch(device, table);
+}
+
+void DispatchManager::SetQueueDevice(VkQueue queue, VkDevice device) {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    queue_to_device_map_[queue] = device;
+}
+
+VkDevice DispatchManager::GetQueueDevice(VkQueue queue) {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    auto it = queue_to_device_map_.find(queue);
+    if (it != queue_to_device_map_.end()) {
+        return it->second;
+    }
+    return VK_NULL_HANDLE;
+}
+
+void DispatchManager::RemoveQueue(VkQueue queue) {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    queue_to_device_map_.erase(queue);
 }
 
 } // namespace motionsafe

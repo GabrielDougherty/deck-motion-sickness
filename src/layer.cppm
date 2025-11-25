@@ -31,6 +31,12 @@ void DestroyDeviceImpl(
     VkDevice device,
     const VkAllocationCallbacks* pAllocator);
 
+void GetDeviceQueueImpl(
+    VkDevice device,
+    uint32_t queueFamilyIndex,
+    uint32_t queueIndex,
+    VkQueue* pQueue);
+
 VkResult QueuePresentImpl(
     VkQueue queue,
     const VkPresentInfoKHR* pPresentInfo);
@@ -156,13 +162,35 @@ void DestroyDeviceImpl(
     DispatchManager::GetInstance().RemoveDeviceDispatch(device);
 }
 
+void GetDeviceQueueImpl(
+    VkDevice device,
+    uint32_t queueFamilyIndex,
+    uint32_t queueIndex,
+    VkQueue* pQueue) {
+    
+    auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(device);
+    if (dispatch && dispatch->GetDeviceQueue) {
+        dispatch->GetDeviceQueue(device, queueFamilyIndex, queueIndex, pQueue);
+        
+        // Track which device this queue belongs to
+        if (pQueue && *pQueue) {
+            DispatchManager::GetInstance().SetQueueDevice(*pQueue, device);
+        }
+    }
+}
+
 VkResult QueuePresentImpl(
     VkQueue queue,
     const VkPresentInfoKHR* pPresentInfo) {
     
     std::cout << "[MotionSafe] vkQueuePresentKHR called" << std::endl;
     
-    VkDevice device = *reinterpret_cast<VkDevice*>(queue);
+    // Get the device that owns this queue
+    VkDevice device = DispatchManager::GetInstance().GetQueueDevice(queue);
+    if (device == VK_NULL_HANDLE) {
+        std::cerr << "[MotionSafe] Error: Queue not found in device map!" << std::endl;
+        return VK_ERROR_INITIALIZATION_FAILED;
+    }
     
     auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(device);
     if (dispatch && dispatch->QueuePresentKHR) {
