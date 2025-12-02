@@ -136,7 +136,6 @@ void RegisterSwapchain(VkDevice device, VkSwapchainKHR swapchain,
 void UnregisterSwapchain(VkSwapchainKHR swapchain) {
     auto it = g_swapchainOverlays.find(swapchain);
     if (it != g_swapchainOverlays.end()) {
-        // TODO: Clean up Vulkan resources for this swapchain
         SwapchainOverlay& overlay = it->second;
         auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(overlay.device);
         
@@ -163,15 +162,8 @@ void UnregisterSwapchain(VkSwapchainKHR swapchain) {
     }
 }
 
-// Helper: Initialize overlay resources for a swapchain
-static bool InitializeOverlay(SwapchainOverlay& overlay) {
-    auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(overlay.device);
-    if (!dispatch) {
-        std::cerr << "[MotionSafe] No dispatch table for device" << std::endl;
-        return false;
-    }
-    
-    // Create render pass for alpha blending
+// Helper: Create render pass for alpha blending
+static bool CreateRenderPass(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = overlay.format;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -203,7 +195,11 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
         return false;
     }
     
-    // Load and compile shaders
+    return true;
+}
+
+// Helper: Load and create shader modules
+static bool CreateShaderModules(SwapchainOverlay& overlay) {
     auto vertCode = ReadShaderFile("shaders/placeholder.vert.spv");
     auto fragCode = ReadShaderFile("shaders/placeholder.frag.spv");
     
@@ -220,7 +216,11 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
         return false;
     }
     
-    // Create pipeline layout
+    return true;
+}
+
+// Helper: Create pipeline layout
+static bool CreatePipelineLayout(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     
@@ -229,7 +229,11 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
         return false;
     }
     
-    // Create graphics pipeline
+    return true;
+}
+
+// Helper: Create graphics pipeline
+static bool CreateGraphicsPipeline(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -323,7 +327,11 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
         return false;
     }
     
-    // Create image views and framebuffers
+    return true;
+}
+
+// Helper: Create image views and framebuffers
+static bool CreateImageViewsAndFramebuffers(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
     overlay.imageViews.resize(overlay.images.size());
     overlay.framebuffers.resize(overlay.images.size());
     
@@ -359,7 +367,11 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
         }
     }
     
-    // Create command pool
+    return true;
+}
+
+// Helper: Create command pool and buffers
+static bool CreateCommandResources(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
@@ -370,7 +382,6 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
         return false;
     }
     
-    // Allocate command buffers
     overlay.commandBuffers.resize(overlay.images.size());
     
     VkCommandBufferAllocateInfo allocInfo{};
@@ -383,6 +394,24 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
         std::cerr << "[MotionSafe] Failed to allocate command buffers" << std::endl;
         return false;
     }
+    
+    return true;
+}
+
+// Helper: Initialize overlay resources for a swapchain
+static bool InitializeOverlay(SwapchainOverlay& overlay) {
+    auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(overlay.device);
+    if (!dispatch) {
+        std::cerr << "[MotionSafe] No dispatch table for device" << std::endl;
+        return false;
+    }
+    
+    if (!CreateRenderPass(overlay, dispatch)) return false;
+    if (!CreateShaderModules(overlay)) return false;
+    if (!CreatePipelineLayout(overlay, dispatch)) return false;
+    if (!CreateGraphicsPipeline(overlay, dispatch)) return false;
+    if (!CreateImageViewsAndFramebuffers(overlay, dispatch)) return false;
+    if (!CreateCommandResources(overlay, dispatch)) return false;
     
     std::cout << "[MotionSafe] Overlay resources initialized successfully" << std::endl;
     return true;
