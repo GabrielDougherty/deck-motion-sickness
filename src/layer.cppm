@@ -15,48 +15,154 @@ import motionsafe.overlay;
 export namespace motionsafe {
 
 // Layer implementation functions
+
+/**
+ * @brief Layer implementation of vkCreateInstance
+ * 
+ * Intercepts instance creation to initialize the layer's dispatch table.
+ * Extracts the next layer's function pointers from the pNext chain, calls
+ * the next vkCreateInstance, and sets up instance-level dispatch.
+ * 
+ * @param pCreateInfo Pointer to VkInstanceCreateInfo structure
+ * @param pAllocator Pointer to allocation callbacks (optional)
+ * @param pInstance Pointer to store the created instance handle
+ * @return VK_SUCCESS on success, or appropriate error code
+ */
 VkResult CreateInstanceImpl(
     const VkInstanceCreateInfo* pCreateInfo,
     const VkAllocationCallbacks* pAllocator,
     VkInstance* pInstance);
 
+/**
+ * @brief Layer implementation of vkDestroyInstance
+ * 
+ * Intercepts instance destruction to clean up the layer's dispatch table.
+ * Calls the next layer's vkDestroyInstance and removes the instance from
+ * the dispatch manager.
+ * 
+ * @param instance The instance to destroy
+ * @param pAllocator Pointer to allocation callbacks (optional)
+ */
 void DestroyInstanceImpl(
     VkInstance instance,
     const VkAllocationCallbacks* pAllocator);
 
+/**
+ * @brief Layer implementation of vkCreateDevice
+ * 
+ * Intercepts device creation to initialize the device-level dispatch table.
+ * Extracts the next layer's function pointers, calls the next vkCreateDevice,
+ * and initializes device dispatch with all intercepted device functions.
+ * 
+ * @param physicalDevice Physical device to create logical device from
+ * @param pCreateInfo Pointer to VkDeviceCreateInfo structure
+ * @param pAllocator Pointer to allocation callbacks (optional)
+ * @param pDevice Pointer to store the created device handle
+ * @return VK_SUCCESS on success, or appropriate error code
+ */
 VkResult CreateDeviceImpl(
     VkPhysicalDevice physicalDevice,
     const VkDeviceCreateInfo* pCreateInfo,
     const VkAllocationCallbacks* pAllocator,
     VkDevice* pDevice);
 
+/**
+ * @brief Layer implementation of vkDestroyDevice
+ * 
+ * Intercepts device destruction to clean up device dispatch table.
+ * Calls the next layer's vkDestroyDevice and removes the device from
+ * the dispatch manager.
+ * 
+ * @param device The device to destroy
+ * @param pAllocator Pointer to allocation callbacks (optional)
+ */
 void DestroyDeviceImpl(
     VkDevice device,
     const VkAllocationCallbacks* pAllocator);
 
+/**
+ * @brief Layer implementation of vkGetDeviceQueue
+ * 
+ * Intercepts queue retrieval to track queue-to-device mappings.
+ * This mapping is essential for later determining which device owns
+ * a queue during presentation.
+ * 
+ * @param device The device that owns the queue
+ * @param queueFamilyIndex Index of the queue family
+ * @param queueIndex Index within the queue family
+ * @param pQueue Pointer to store the retrieved queue handle
+ */
 void GetDeviceQueueImpl(
     VkDevice device,
     uint32_t queueFamilyIndex,
     uint32_t queueIndex,
     VkQueue* pQueue);
 
+/**
+ * @brief Layer implementation of vkCreateSwapchainKHR
+ * 
+ * Intercepts swapchain creation to store metadata for overlay registration.
+ * Records swapchain dimensions, format, and owning device for later use
+ * when registering with the overlay system.
+ * 
+ * @param device The device creating the swapchain
+ * @param pCreateInfo Pointer to VkSwapchainCreateInfoKHR structure
+ * @param pAllocator Pointer to allocation callbacks (optional)
+ * @param pSwapchain Pointer to store the created swapchain handle
+ * @return VK_SUCCESS on success, or appropriate error code
+ */
 VkResult CreateSwapchainImpl(
     VkDevice device,
     const VkSwapchainCreateInfoKHR* pCreateInfo,
     const VkAllocationCallbacks* pAllocator,
     VkSwapchainKHR* pSwapchain);
 
+/**
+ * @brief Layer implementation of vkDestroySwapchainKHR
+ * 
+ * Intercepts swapchain destruction to clean up overlay resources.
+ * Unregisters the swapchain from the overlay system, which destroys
+ * all associated rendering resources, then calls the next layer's destroy.
+ * 
+ * @param device The device that owns the swapchain
+ * @param swapchain The swapchain to destroy
+ * @param pAllocator Pointer to allocation callbacks (optional)
+ */
 void DestroySwapchainImpl(
     VkDevice device,
     VkSwapchainKHR swapchain,
     const VkAllocationCallbacks* pAllocator);
 
+/**
+ * @brief Layer implementation of vkGetSwapchainImagesKHR
+ * 
+ * Intercepts swapchain image retrieval to register with overlay system.
+ * On the second call (when pSwapchainImages != nullptr), registers the
+ * swapchain and its images with the overlay system for rendering.
+ * 
+ * @param device The device that owns the swapchain
+ * @param swapchain The swapchain to query images from
+ * @param pSwapchainImageCount Pointer to image count (in/out)
+ * @param pSwapchainImages Pointer to array of image handles (optional)
+ * @return VK_SUCCESS on success, or appropriate error code
+ */
 VkResult GetSwapchainImagesImpl(
     VkDevice device,
     VkSwapchainKHR swapchain,
     uint32_t* pSwapchainImageCount,
     VkImage* pSwapchainImages);
 
+/**
+ * @brief Layer implementation of vkQueuePresentKHR
+ * 
+ * Intercepts frame presentation to render the motion-sickness overlay.
+ * For each swapchain being presented, renders the overlay on the specified
+ * image before calling the next layer's present function.
+ * 
+ * @param queue The queue to present on
+ * @param pPresentInfo Pointer to VkPresentInfoKHR structure
+ * @return Result from the next layer's vkQueuePresentKHR
+ */
 VkResult QueuePresentImpl(
     VkQueue queue,
     const VkPresentInfoKHR* pPresentInfo);
@@ -67,14 +173,21 @@ module :private;
 
 namespace motionsafe {
 
-// Track swapchain metadata for overlay registration
+/**
+ * @brief Metadata about a swapchain for delayed overlay registration
+ * 
+ * Stores information captured during vkCreateSwapchainKHR that will be
+ * needed later when registering with the overlay system during
+ * vkGetSwapchainImagesKHR.
+ */
 struct SwapchainInfo {
-    uint32_t width;
-    uint32_t height;
-    VkFormat format;
-    VkDevice device;
+    uint32_t width;    ///< Swapchain width in pixels
+    uint32_t height;   ///< Swapchain height in pixels
+    VkFormat format;   ///< Image format
+    VkDevice device;   ///< Owning device
 };
 
+/// Global map of swapchain metadata, indexed by swapchain handle
 static std::unordered_map<VkSwapchainKHR, SwapchainInfo> g_swapchainInfo;
 
 VkResult CreateInstanceImpl(
