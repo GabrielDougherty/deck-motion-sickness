@@ -15,15 +15,60 @@ export namespace motionsafe {
 namespace overlay {
 
 // Forward declarations
+
+/**
+ * @brief Initialize the overlay system
+ * 
+ * Sets up global state for the overlay rendering system. Should be called
+ * once during layer initialization.
+ */
 void Initialize();
+
+/**
+ * @brief Shutdown the overlay system
+ * 
+ * Cleans up all overlay resources and global state. Should be called
+ * during layer cleanup.
+ */
 void Shutdown();
 
+/**
+ * @brief Register a swapchain with the overlay system
+ * 
+ * Registers a swapchain and its images for overlay rendering. This must be
+ * called after swapchain creation and image retrieval.
+ * 
+ * @param device The Vulkan device that owns the swapchain
+ * @param swapchain The swapchain handle to register
+ * @param images Vector of swapchain images to render overlays on
+ * @param width Width of the swapchain images in pixels
+ * @param height Height of the swapchain images in pixels
+ * @param format Vulkan format of the swapchain images
+ */
 void RegisterSwapchain(VkDevice device, VkSwapchainKHR swapchain, 
                       const std::vector<VkImage>& images,
                       uint32_t width, uint32_t height, VkFormat format);
 
+/**
+ * @brief Unregister a swapchain from the overlay system
+ * 
+ * Removes a swapchain from the overlay system and cleans up all associated
+ * rendering resources (pipelines, command buffers, framebuffers, etc.).
+ * 
+ * @param swapchain The swapchain handle to unregister
+ */
 void UnregisterSwapchain(VkSwapchainKHR swapchain);
 
+/**
+ * @brief Render the overlay on a swapchain image
+ * 
+ * Records and submits commands to render the motion-sickness overlay on the
+ * specified swapchain image. Called before each frame presentation.
+ * 
+ * @param queue The queue to submit rendering commands to
+ * @param swapchain The swapchain being presented
+ * @param imageIndex Index of the swapchain image to render on
+ */
 void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex);
 
 } // namespace overlay
@@ -61,7 +106,12 @@ struct SwapchainOverlay {
 // Global overlay state
 static std::unordered_map<VkSwapchainKHR, SwapchainOverlay> g_swapchainOverlays;
 
-// Helper: Read shader file
+/**
+ * @brief Read a compiled SPIR-V shader file from disk
+ * 
+ * @param filename Path to the shader file
+ * @return Vector containing the shader bytecode, or empty vector on failure
+ */
 static std::vector<char> ReadShaderFile(const char* filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
     
@@ -80,7 +130,13 @@ static std::vector<char> ReadShaderFile(const char* filename) {
     return buffer;
 }
 
-// Helper: Create shader module
+/**
+ * @brief Create a Vulkan shader module from SPIR-V bytecode
+ * 
+ * @param device The Vulkan device to create the shader module on
+ * @param code Vector containing SPIR-V bytecode
+ * @return Shader module handle, or VK_NULL_HANDLE on failure
+ */
 static VkShaderModule CreateShaderModule(VkDevice device, const std::vector<char>& code) {
     if (code.empty()) {
         return VK_NULL_HANDLE;
@@ -103,6 +159,52 @@ static VkShaderModule CreateShaderModule(VkDevice device, const std::vector<char
     }
     
     return shaderModule;
+}
+
+/**
+ * @brief Create a render pass configured for alpha blending overlay rendering
+ * 
+ * Creates a render pass that loads existing framebuffer content and blends
+ * the overlay on top using alpha compositing. Uses PRESENT_SRC_KHR layout
+ * for both initial and final layouts.
+ * 
+ * @param overlay Swapchain overlay structure to store the render pass in
+ * @param dispatch Device dispatch table for Vulkan function calls
+ * @return true if render pass creation succeeded, false otherwise
+ */
+static bool CreateRenderPass(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = overlay.format;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;  // Load existing content
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    
+    VkAttachmentReference colorAttachmentRef{};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+    
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    
+    if (dispatch->CreateRenderPass(overlay.device, &renderPassInfo, nullptr, &overlay.renderPass) != VK_SUCCESS) {
+        std::cerr << "[MotionSafe] Failed to create render pass" << std::endl;
+        return false;
+    }
+    
+    return true;
 }
 
 void Initialize() {
@@ -162,43 +264,15 @@ void UnregisterSwapchain(VkSwapchainKHR swapchain) {
     }
 }
 
-// Helper: Create render pass for alpha blending
-static bool CreateRenderPass(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
-    VkAttachmentDescription colorAttachment{};
-    colorAttachment.format = overlay.format;
-    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;  // Load existing content
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    
-    VkAttachmentReference colorAttachmentRef{};
-    colorAttachmentRef.attachment = 0;
-    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    
-    VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorAttachmentRef;
-    
-    VkRenderPassCreateInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
-    
-    if (dispatch->CreateRenderPass(overlay.device, &renderPassInfo, nullptr, &overlay.renderPass) != VK_SUCCESS) {
-        std::cerr << "[MotionSafe] Failed to create render pass" << std::endl;
-        return false;
-    }
-    
-    return true;
-}
-
-// Helper: Load and create shader modules
+/**
+ * @brief Load shader files and create shader modules
+ * 
+ * Reads vertex and fragment shader SPIR-V files from disk and creates
+ * Vulkan shader modules for the overlay rendering pipeline.
+ * 
+ * @param overlay Swapchain overlay structure to store shader modules in
+ * @return true if both shader modules were created successfully, false otherwise
+ */
 static bool CreateShaderModules(SwapchainOverlay& overlay) {
     auto vertCode = ReadShaderFile("shaders/placeholder.vert.spv");
     auto fragCode = ReadShaderFile("shaders/placeholder.frag.spv");
@@ -219,7 +293,17 @@ static bool CreateShaderModules(SwapchainOverlay& overlay) {
     return true;
 }
 
-// Helper: Create pipeline layout
+/**
+ * @brief Create the graphics pipeline layout
+ * 
+ * Creates an empty pipeline layout (no descriptor sets or push constants).
+ * This can be extended in the future to support uniform buffers or push
+ * constants for overlay customization.
+ * 
+ * @param overlay Swapchain overlay structure to store the pipeline layout in
+ * @param dispatch Device dispatch table for Vulkan function calls
+ * @return true if pipeline layout creation succeeded, false otherwise
+ */
 static bool CreatePipelineLayout(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -232,7 +316,19 @@ static bool CreatePipelineLayout(SwapchainOverlay& overlay, DeviceDispatchTable*
     return true;
 }
 
-// Helper: Create graphics pipeline
+/**
+ * @brief Create the graphics pipeline for overlay rendering
+ * 
+ * Configures and creates a complete graphics pipeline with:
+ * - Vertex and fragment shaders
+ * - No vertex input (fullscreen triangle generated in shader)
+ * - Alpha blending for transparent overlay
+ * - Viewport and scissor matching swapchain dimensions
+ * 
+ * @param overlay Swapchain overlay structure to store the pipeline in
+ * @param dispatch Device dispatch table for Vulkan function calls
+ * @return true if pipeline creation succeeded, false otherwise
+ */
 static bool CreateGraphicsPipeline(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -330,7 +426,17 @@ static bool CreateGraphicsPipeline(SwapchainOverlay& overlay, DeviceDispatchTabl
     return true;
 }
 
-// Helper: Create image views and framebuffers
+/**
+ * @brief Create image views and framebuffers for each swapchain image
+ * 
+ * For each swapchain image, creates:
+ * - An image view for accessing the image in shaders
+ * - A framebuffer that references the image view for rendering
+ * 
+ * @param overlay Swapchain overlay structure to store views and framebuffers in
+ * @param dispatch Device dispatch table for Vulkan function calls
+ * @return true if all views and framebuffers were created successfully, false otherwise
+ */
 static bool CreateImageViewsAndFramebuffers(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
     overlay.imageViews.resize(overlay.images.size());
     overlay.framebuffers.resize(overlay.images.size());
@@ -370,7 +476,19 @@ static bool CreateImageViewsAndFramebuffers(SwapchainOverlay& overlay, DeviceDis
     return true;
 }
 
-// Helper: Create command pool and buffers
+/**
+ * @brief Create command pool and allocate command buffers
+ * 
+ * Creates a command pool with RESET_COMMAND_BUFFER flag and allocates one
+ * primary command buffer per swapchain image for recording overlay rendering.
+ * 
+ * @note Currently uses queue family index 0, should be improved to query
+ *       the actual queue family from the presentation queue
+ * 
+ * @param overlay Swapchain overlay structure to store command resources in
+ * @param dispatch Device dispatch table for Vulkan function calls
+ * @return true if command pool and buffers were created successfully, false otherwise
+ */
 static bool CreateCommandResources(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -398,7 +516,22 @@ static bool CreateCommandResources(SwapchainOverlay& overlay, DeviceDispatchTabl
     return true;
 }
 
-// Helper: Initialize overlay resources for a swapchain
+/**
+ * @brief Initialize all overlay rendering resources for a swapchain
+ * 
+ * Orchestrates the creation of all Vulkan resources needed for overlay rendering:
+ * - Render pass with alpha blending
+ * - Vertex and fragment shader modules
+ * - Pipeline layout
+ * - Graphics pipeline with full state configuration
+ * - Image views and framebuffers for each swapchain image
+ * - Command pool and command buffers
+ * 
+ * This function is called lazily on the first frame presentation for each swapchain.
+ * 
+ * @param overlay Swapchain overlay structure to initialize
+ * @return true if all resources were initialized successfully, false on any failure
+ */
 static bool InitializeOverlay(SwapchainOverlay& overlay) {
     auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(overlay.device);
     if (!dispatch) {
@@ -417,6 +550,23 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
     return true;
 }
 
+/**
+ * @brief Render the motion-sickness overlay on a swapchain image
+ * 
+ * Records and executes rendering commands to composite the overlay on top of
+ * the application's rendered frame. This function:
+ * 1. Lazily initializes overlay resources on first use
+ * 2. Records a command buffer with render pass and draw commands
+ * 3. Submits the command buffer to the queue
+ * 4. Waits for completion (blocking)
+ * 
+ * @note Currently uses QueueWaitIdle for simplicity, which blocks the CPU.
+ *       For better performance, should use fences and semaphores for async operation.
+ * 
+ * @param queue The Vulkan queue to submit rendering commands to
+ * @param swapchain The swapchain handle being presented
+ * @param imageIndex Index of the swapchain image to render the overlay on
+ */
 void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex) {
     auto it = g_swapchainOverlays.find(swapchain);
     if (it == g_swapchainOverlays.end()) {
