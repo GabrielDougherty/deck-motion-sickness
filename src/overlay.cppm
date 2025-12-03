@@ -6,6 +6,7 @@ module;
 #include <unordered_map>
 #include <fstream>
 #include <array>
+#include <chrono>
 
 export module motionsafe.overlay;
 
@@ -101,6 +102,9 @@ struct SwapchainOverlay {
     uint32_t height = 0;
     VkFormat format = VK_FORMAT_UNDEFINED;
     bool initialized = false;
+    
+    // Animation timing
+    std::chrono::steady_clock::time_point startTime;
 };
 
 // Global overlay state
@@ -303,11 +307,11 @@ static bool CreateShaderModules(SwapchainOverlay& overlay) {
  * @return true if pipeline layout creation succeeded, false otherwise
  */
 static bool CreatePipelineLayout(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
-    // Push constant for aspect ratio
+    // Push constant for aspect ratio and time
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(float);  // Just aspect ratio
+    pushConstantRange.size = sizeof(float) * 2;  // aspect ratio + time
     
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -552,6 +556,9 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
     if (!CreateImageViewsAndFramebuffers(overlay, dispatch)) return false;
     if (!CreateCommandResources(overlay, dispatch)) return false;
     
+    // Initialize animation start time
+    overlay.startTime = std::chrono::steady_clock::now();
+    
     std::cout << "[MotionSafe] Overlay resources initialized successfully" << std::endl;
     return true;
 }
@@ -620,9 +627,16 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     // Bind pipeline
     dispatch->CmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, overlay.pipeline);
     
-    // Push aspect ratio constant
-    float aspectRatio = static_cast<float>(overlay.width) / static_cast<float>(overlay.height);
-    dispatch->CmdPushConstants(cmd, overlay.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float), &aspectRatio);
+    // Calculate elapsed time
+    auto now = std::chrono::steady_clock::now();
+    float elapsedTime = std::chrono::duration<float>(now - overlay.startTime).count();
+    
+    // Push constants: aspect ratio and time
+    float pushConstants[2] = {
+        static_cast<float>(overlay.width) / static_cast<float>(overlay.height),
+        elapsedTime
+    };
+    dispatch->CmdPushConstants(cmd, overlay.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pushConstants), pushConstants);
     
     // Draw fullscreen triangle (3 vertices, no vertex buffer needed)
     dispatch->CmdDraw(cmd, 3, 1, 0, 0);
