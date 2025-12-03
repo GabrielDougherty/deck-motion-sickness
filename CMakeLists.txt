@@ -87,8 +87,8 @@ target_link_libraries(motionsafe_overlay
 )
 
 # Compile shaders
-add_shader(motionsafe_overlay placeholder.vert)
-add_shader(motionsafe_overlay placeholder.frag)
+add_shader(motionsafe_overlay motion_overlay.vert)
+add_shader(motionsafe_overlay motion_overlay.frag)
 
 # Homebrew LLVM on macOS needs explicit C++ stdlib linking with library path
 # Source - https://stackoverflow.com/a

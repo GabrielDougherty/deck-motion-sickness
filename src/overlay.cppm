@@ -274,8 +274,8 @@ void UnregisterSwapchain(VkSwapchainKHR swapchain) {
  * @return true if both shader modules were created successfully, false otherwise
  */
 static bool CreateShaderModules(SwapchainOverlay& overlay) {
-    auto vertCode = ReadShaderFile("shaders/placeholder.vert.spv");
-    auto fragCode = ReadShaderFile("shaders/placeholder.frag.spv");
+    auto vertCode = ReadShaderFile("shaders/motion_overlay.vert.spv");
+    auto fragCode = ReadShaderFile("shaders/motion_overlay.frag.spv");
     
     if (vertCode.empty() || fragCode.empty()) {
         std::cerr << "[MotionSafe] Failed to read shader files (did you compile them?)" << std::endl;
