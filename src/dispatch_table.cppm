@@ -69,6 +69,7 @@ struct DeviceDispatchTable {
     PFN_vkCmdBindPipeline CmdBindPipeline;
     PFN_vkCmdDraw CmdDraw;
     PFN_vkCmdPipelineBarrier CmdPipelineBarrier;
+    PFN_vkCmdPushConstants CmdPushConstants;
 };
 
 class DispatchManager {
@@ -230,6 +231,7 @@ void DispatchManager::InitDeviceDispatchTable(VkDevice device, PFN_vkGetDevicePr
     LOAD_DEVICE_FUNC(CmdBindPipeline);
     LOAD_DEVICE_FUNC(CmdDraw);
     LOAD_DEVICE_FUNC(CmdPipelineBarrier);
+    LOAD_DEVICE_FUNC(CmdPushConstants);
     
     #undef LOAD_DEVICE_FUNC
     

@@ -296,17 +296,23 @@ static bool CreateShaderModules(SwapchainOverlay& overlay) {
 /**
  * @brief Create the graphics pipeline layout
  * 
- * Creates an empty pipeline layout (no descriptor sets or push constants).
- * This can be extended in the future to support uniform buffers or push
- * constants for overlay customization.
+ * Creates a pipeline layout with push constants for aspect ratio.
  * 
  * @param overlay Swapchain overlay structure to store the pipeline layout in
  * @param dispatch Device dispatch table for Vulkan function calls
  * @return true if pipeline layout creation succeeded, false otherwise
  */
 static bool CreatePipelineLayout(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
+    // Push constant for aspect ratio
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(float);  // Just aspect ratio
+    
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
     
     if (dispatch->CreatePipelineLayout(overlay.device, &pipelineLayoutInfo, nullptr, &overlay.pipelineLayout) != VK_SUCCESS) {
         std::cerr << "[MotionSafe] Failed to create pipeline layout" << std::endl;
@@ -613,6 +619,10 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     
     // Bind pipeline
     dispatch->CmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, overlay.pipeline);
+    
+    // Push aspect ratio constant
+    float aspectRatio = static_cast<float>(overlay.width) / static_cast<float>(overlay.height);
+    dispatch->CmdPushConstants(cmd, overlay.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(float), &aspectRatio);
     
     // Draw fullscreen triangle (3 vertices, no vertex buffer needed)
     dispatch->CmdDraw(cmd, 3, 1, 0, 0);

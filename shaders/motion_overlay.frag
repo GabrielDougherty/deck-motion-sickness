@@ -4,20 +4,29 @@ layout(location = 0) in vec2 fragUV;
 
 layout(location = 0) out vec4 outColor;
 
+// Push constants for dynamic resolution
+layout(push_constant) uniform PushConstants {
+    float aspectRatio;  // width / height
+} pc;
+
 void main() {
-    // Four dots - one in each corner
-    vec2 topLeft = vec2(0.1, 0.1);
-    vec2 topRight = vec2(0.9, 0.1);
-    vec2 bottomLeft = vec2(0.1, 0.9);
-    vec2 bottomRight = vec2(0.9, 0.9);
+    // Correct UV coordinates to make circles truly circular
+    vec2 correctedUV = fragUV;
+    correctedUV.x *= pc.aspectRatio;
+    
+    // Four dots - one in each corner (with aspect correction)
+    vec2 topLeft = vec2(0.1 * pc.aspectRatio, 0.1);
+    vec2 topRight = vec2(0.9 * pc.aspectRatio, 0.1);
+    vec2 bottomLeft = vec2(0.1 * pc.aspectRatio, 0.9);
+    vec2 bottomRight = vec2(0.9 * pc.aspectRatio, 0.9);
     
     // Distance from each dot
-    float distTL = distance(fragUV, topLeft);
-    float distTR = distance(fragUV, topRight);
-    float distBL = distance(fragUV, bottomLeft);
-    float distBR = distance(fragUV, bottomRight);
+    float distTL = distance(correctedUV, topLeft);
+    float distTR = distance(correctedUV, topRight);
+    float distBL = distance(correctedUV, bottomLeft);
+    float distBR = distance(correctedUV, bottomRight);
     
-    // Red dot with radius 0.05 (5% of screen)
+    // Red dot with radius 0.05 (5% of screen height)
     float radius = 0.05;
     
     // Smooth edge with antialiasing for each dot
