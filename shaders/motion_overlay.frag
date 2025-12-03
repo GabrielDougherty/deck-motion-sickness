@@ -14,30 +14,29 @@ void main() {
     vec2 correctedUV = fragUV;
     correctedUV.x *= pc.aspectRatio;
     
-    // Four dots - one in each corner (with aspect correction)
-    vec2 topLeft = vec2(0.1 * pc.aspectRatio, 0.1);
-    vec2 topRight = vec2(0.9 * pc.aspectRatio, 0.1);
-    vec2 bottomLeft = vec2(0.1 * pc.aspectRatio, 0.9);
-    vec2 bottomRight = vec2(0.9 * pc.aspectRatio, 0.9);
-    
-    // Distance from each dot
-    float distTL = distance(correctedUV, topLeft);
-    float distTR = distance(correctedUV, topRight);
-    float distBL = distance(correctedUV, bottomLeft);
-    float distBR = distance(correctedUV, bottomRight);
-    
-    // Red dot with radius 0.05 (5% of screen height)
+    // Dot parameters
     float radius = 0.05;
+    float spacing = 0.2;  // Space between dots
+    float edgeDistance = 0.1;  // Distance from edge
     
-    // Smooth edge with antialiasing for each dot
-    float alphaTL = smoothstep(radius + 0.01, radius, distTL);
-    float alphaTR = smoothstep(radius + 0.01, radius, distTR);
-    float alphaBL = smoothstep(radius + 0.01, radius, distBL);
-    float alphaBR = smoothstep(radius + 0.01, radius, distBR);
+    float maxAlpha = 0.0;
     
-    // Combine all dots (max to avoid overlap issues)
-    float alpha = max(max(alphaTL, alphaTR), max(alphaBL, alphaBR));
+    // Top edge dots
+    for (float x = edgeDistance; x <= 0.9; x += spacing) {
+        vec2 dotPos = vec2(x * pc.aspectRatio, edgeDistance);
+        float dist = distance(correctedUV, dotPos);
+        float alpha = smoothstep(radius + 0.01, radius, dist);
+        maxAlpha = max(maxAlpha, alpha);
+    }
+    
+    // Bottom edge dots
+    for (float x = edgeDistance; x <= 0.9; x += spacing) {
+        vec2 dotPos = vec2(x * pc.aspectRatio, 0.9);
+        float dist = distance(correctedUV, dotPos);
+        float alpha = smoothstep(radius + 0.01, radius, dist);
+        maxAlpha = max(maxAlpha, alpha);
+    }
     
     // Red color with alpha
-    outColor = vec4(1.0, 0.0, 0.0, alpha * 0.5);  // 50% transparent red
+    outColor = vec4(1.0, 0.0, 0.0, maxAlpha * 0.5);  // 50% transparent red
 }
