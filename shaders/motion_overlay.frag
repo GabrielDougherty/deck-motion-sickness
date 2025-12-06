@@ -18,8 +18,8 @@ void main() {
     correctedUV.x *= pc.aspectRatio;
     
     // Dot parameters
-    float radius = 0.05;
-    float spacing = 0.2;  // Space between dots
+    float radius = 0.03;  // Smaller radius (was 0.05)
+    float spacing = 0.12;  // Closer spacing (was 0.2)
     float topEdgeY = 0.10;  // Y position where fading starts at top
     float bottomEdgeY = 0.80;  // Y position where fading starts at bottom
     float fadeWidth = 0.25;  // Width of fade zone (much more gradual)
@@ -34,12 +34,24 @@ void main() {
     
     float maxAlpha = 0.0;
     
-    // Create a continuous grid of dots - loop through X and Y
-    for (float y = -2.0; y <= 2.0; y += spacing) {
-        for (float x = -4.0; x <= 4.0; x += spacing) {
+    // Create a continuous grid of dots - reduced range since dots are closer together
+    for (float y = -0.5; y <= 1.5; y += spacing) {
+        for (float x = -1.0; x <= 2.0; x += spacing) {
+            float dotPosY = y + wrappedOffsetY;
+            
+            // Early exit: skip dots that are completely off-screen vertically
+            if (dotPosY < -fadeWidth || dotPosY > 1.0 + fadeWidth) {
+                continue;
+            }
+            
             vec2 dotPos = vec2((x + wrappedOffsetX) * pc.aspectRatio, y + wrappedOffsetY);
             float dist = distance(correctedUV, dotPos);
             float alpha = smoothstep(radius + 0.01, radius, dist);
+            
+            // Early exit: if dot is too far away to be visible
+            if (alpha < 0.001) {
+                continue;
+            }
             
             // Calculate horizontal fade (left-right edges of screen)
             float horizontalFade = 1.0;
@@ -58,7 +70,7 @@ void main() {
             
             // Vertical fade: fade at top and bottom, completely fade out center
             float verticalFade = 1.0;
-            float dotPosY = y + wrappedOffsetY;
+            // dotPosY already calculated above for early exit
             
             // Fade zone at top (above topEdgeY fades out towards screen top)
             if (dotPosY < topEdgeY) {

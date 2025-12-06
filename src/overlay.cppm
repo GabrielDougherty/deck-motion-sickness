@@ -698,7 +698,7 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     float elapsedTime = std::chrono::duration<float>(now - overlay.startTime).count();
     
     // Wrap offsets at spacing boundaries for seamless grid repetition
-    const float spacing = 0.2f;
+    const float spacing = 0.12f;  // Match shader spacing
     float wrappedOffsetX = std::fmod(overlay.offsetX, spacing);
     float wrappedOffsetY = std::fmod(overlay.offsetY, spacing);
     if (wrappedOffsetX < 0) wrappedOffsetX += spacing;
