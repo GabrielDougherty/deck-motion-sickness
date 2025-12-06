@@ -100,6 +100,7 @@ struct SwapchainOverlay {
     
     VkCommandPool commandPool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> commandBuffers;
+    std::vector<VkFence> renderFences;  // One fence per swapchain image for async rendering
     
     // Swapchain properties - grouped for cache efficiency
     struct Properties {
@@ -122,6 +123,20 @@ struct SwapchainOverlay {
         float smoothedVelX = 0.0f;
         float smoothedVelY = 0.0f;
     } anim;
+    
+    // Performance tracking
+    struct PerformanceStats {
+        uint64_t frameCount = 0;
+        double totalCpuTimeMs = 0.0;
+        double avgCpuTimeMs = 0.0;
+        double maxCpuTimeMs = 0.0;
+        double minCpuTimeMs = 999999.0;
+        double totalMathTimeUs = 0.0;  // Math-only time in microseconds
+        double avgMathTimeUs = 0.0;
+        double maxMathTimeUs = 0.0;
+        double minMathTimeUs = 999999.0;
+        std::chrono::steady_clock::time_point lastStatsReport;
+    } perf;
 };
 
 // Global overlay state
@@ -265,6 +280,11 @@ void UnregisterSwapchain(VkSwapchainKHR swapchain) {
         auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(overlay.device);
         
         if (dispatch) {
+            // Wait for any in-flight rendering to complete before cleanup
+            if (dispatch->DeviceWaitIdle) {
+                dispatch->DeviceWaitIdle(overlay.device);
+            }
+            
             if (overlay.pipeline) dispatch->DestroyPipeline(overlay.device, overlay.pipeline, nullptr);
             if (overlay.pipelineLayout) dispatch->DestroyPipelineLayout(overlay.device, overlay.pipelineLayout, nullptr);
             if (overlay.renderPass) dispatch->DestroyRenderPass(overlay.device, overlay.renderPass, nullptr);
@@ -276,6 +296,9 @@ void UnregisterSwapchain(VkSwapchainKHR swapchain) {
             }
             for (auto iv : overlay.imageViews) {
                 if (iv) dispatch->DestroyImageView(overlay.device, iv, nullptr);
+            }
+            for (auto fence : overlay.renderFences) {
+                if (fence) dispatch->DestroyFence(overlay.device, fence, nullptr);
             }
             if (overlay.commandPool) {
                 dispatch->DestroyCommandPool(overlay.device, overlay.commandPool, nullptr);
@@ -557,6 +580,20 @@ static bool CreateCommandResources(SwapchainOverlay& overlay, DeviceDispatchTabl
         return false;
     }
     
+    // Create fences for async rendering - one per swapchain image
+    overlay.renderFences.resize(overlay.images.size());
+    
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // Start signaled so first frame doesn't block
+    
+    for (size_t i = 0; i < overlay.images.size(); i++) {
+        if (dispatch->CreateFence(overlay.device, &fenceInfo, nullptr, &overlay.renderFences[i]) != VK_SUCCESS) {
+            std::cerr << "[MotionSafe] Failed to create fence " << i << std::endl;
+            return false;
+        }
+    }
+    
     return true;
 }
 
@@ -608,18 +645,22 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
  * Records and executes rendering commands to composite the overlay on top of
  * the application's rendered frame. This function:
  * 1. Lazily initializes overlay resources on first use
- * 2. Records a command buffer with render pass and draw commands
- * 3. Submits the command buffer to the queue
- * 4. Waits for completion (blocking)
+ * 2. Waits for previous frame's fence to ensure command buffer is not in use
+ * 3. Records a command buffer with render pass and draw commands
+ * 4. Submits the command buffer with fence for async GPU execution
+ * 5. Returns immediately without blocking CPU
  * 
- * @note Currently uses QueueWaitIdle for simplicity, which blocks the CPU.
- *       For better performance, should use fences and semaphores for async operation.
+ * Uses the standard "frames-in-flight" pattern with per-image fences for
+ * optimal performance.
  * 
  * @param queue The Vulkan queue to submit rendering commands to
  * @param swapchain The swapchain handle being presented
  * @param imageIndex Index of the swapchain image to render the overlay on
  */
 void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex) {
+    // Start CPU timing
+    auto cpuStartTime = std::chrono::high_resolution_clock::now();
+    
     auto it = g_swapchainOverlays.find(swapchain);
     if (it == g_swapchainOverlays.end()) {
         return;  // Swapchain not registered yet
@@ -639,6 +680,22 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(overlay.device);
     if (!dispatch) {
         return;
+    }
+    
+    // Wait for this image's previous frame to complete rendering
+    // This prevents overwriting command buffers that are still in flight
+    VkFence fence = overlay.renderFences[imageIndex];
+    if (dispatch->WaitForFences) {
+        VkResult result = dispatch->WaitForFences(overlay.device, 1, &fence, VK_TRUE, UINT64_MAX);
+        if (result != VK_SUCCESS) {
+            std::cerr << "[MotionSafe] Failed to wait for fence" << std::endl;
+            return;
+        }
+    }
+    
+    // Reset fence for this frame
+    if (dispatch->ResetFences) {
+        dispatch->ResetFences(overlay.device, 1, &fence);
     }
     
     // Update motion sensor data
@@ -669,6 +726,9 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     
     // Bind pipeline
     dispatch->CmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, overlay.pipeline);
+    
+    // === START TIMING: Motion calculation hot path ===
+    auto mathStartTime = std::chrono::high_resolution_clock::now();
     
     // Calculate delta time and update integrated position
     auto now = std::chrono::steady_clock::now();
@@ -717,6 +777,11 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
         wrappedOffsetX,
         wrappedOffsetY
     };
+    
+    // === END TIMING: Motion calculation ===
+    auto mathEndTime = std::chrono::high_resolution_clock::now();
+    double mathTimeUs = std::chrono::duration<double, std::micro>(mathEndTime - mathStartTime).count();
+    
     dispatch->CmdPushConstants(cmd, overlay.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pushConstants), pushConstants);
     
     // Draw fullscreen triangle (3 vertices, no vertex buffer needed)
@@ -736,14 +801,54 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &cmd;
     
-    if (dispatch->QueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+    // Submit with fence to track completion asynchronously
+    if (dispatch->QueueSubmit(queue, 1, &submitInfo, fence) != VK_SUCCESS) {
         std::cerr << "[MotionSafe] Failed to submit command buffer" << std::endl;
         return;
     }
+
+    // End CPU timing and update stats
+    auto cpuEndTime = std::chrono::high_resolution_clock::now();
+    double cpuTimeMs = std::chrono::duration<double, std::milli>(cpuEndTime - cpuStartTime).count();
     
-    // Wait for queue to finish (simple approach - not optimal for performance)
-    if (dispatch->QueueWaitIdle) {
-        dispatch->QueueWaitIdle(queue);
+    overlay.perf.frameCount++;
+    overlay.perf.totalCpuTimeMs += cpuTimeMs;
+    overlay.perf.maxCpuTimeMs = std::max(overlay.perf.maxCpuTimeMs, cpuTimeMs);
+    overlay.perf.minCpuTimeMs = std::min(overlay.perf.minCpuTimeMs, cpuTimeMs);
+    overlay.perf.avgCpuTimeMs = overlay.perf.totalCpuTimeMs / overlay.perf.frameCount;
+    
+    // Track math-only timing
+    overlay.perf.totalMathTimeUs += mathTimeUs;
+    overlay.perf.maxMathTimeUs = std::max(overlay.perf.maxMathTimeUs, mathTimeUs);
+    overlay.perf.minMathTimeUs = std::min(overlay.perf.minMathTimeUs, mathTimeUs);
+    overlay.perf.avgMathTimeUs = overlay.perf.totalMathTimeUs / overlay.perf.frameCount;
+    
+    // Report stats every 5 seconds
+    auto perfNow = std::chrono::steady_clock::now();
+    if (overlay.perf.frameCount == 1) {
+        overlay.perf.lastStatsReport = perfNow;
+    }
+    
+    auto timeSinceReport = std::chrono::duration<double>(perfNow - overlay.perf.lastStatsReport).count();
+    if (timeSinceReport >= 5.0) {
+        std::cout << "[MotionSafe][PERF] Overlay rendering stats (last " << overlay.perf.frameCount << " frames):\n"
+                  << "  CPU time - Avg: " << overlay.perf.avgCpuTimeMs << " ms"
+                  << ", Min: " << overlay.perf.minCpuTimeMs << " ms"
+                  << ", Max: " << overlay.perf.maxCpuTimeMs << " ms\n"
+                  << "  Math time - Avg: " << overlay.perf.avgMathTimeUs << " µs"
+                  << ", Min: " << overlay.perf.minMathTimeUs << " µs"
+                  << ", Max: " << overlay.perf.maxMathTimeUs << " µs\n"
+                  << "  FPS: " << (overlay.perf.frameCount / timeSinceReport) << "\n";
+        
+        // Reset stats for next period
+        overlay.perf.frameCount = 0;
+        overlay.perf.totalCpuTimeMs = 0.0;
+        overlay.perf.maxCpuTimeMs = 0.0;
+        overlay.perf.minCpuTimeMs = 999999.0;
+        overlay.perf.totalMathTimeUs = 0.0;
+        overlay.perf.maxMathTimeUs = 0.0;
+        overlay.perf.minMathTimeUs = 999999.0;
+        overlay.perf.lastStatsReport = perfNow;
     }
 }
 
