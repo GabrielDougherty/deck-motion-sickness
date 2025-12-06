@@ -13,16 +13,23 @@ layout(push_constant) uniform PushConstants {
 } pc;
 
 void main() {
+    // Dot parameters
+    float topEdgeY = 0.10;  // Y position where fading starts at top
+    float bottomEdgeY = 0.80;  // Y position where fading starts at bottom
+    float fadeWidth = 0.25;  // Width of fade zone (much more gradual)
+    
+    // Early exit if in center zone where dots are completely invisible
+    if (fragUV.y > topEdgeY + fadeWidth && fragUV.y < bottomEdgeY - fadeWidth) {
+        outColor = vec4(0.0);
+        return;
+    }
+    
     // Correct UV coordinates to make circles truly circular
     vec2 correctedUV = fragUV;
     correctedUV.x *= pc.aspectRatio;
     
-    // Dot parameters
     float radius = 0.03;  // Smaller radius (was 0.05)
     float spacing = 0.12;  // Closer spacing (was 0.2)
-    float topEdgeY = 0.10;  // Y position where fading starts at top
-    float bottomEdgeY = 0.80;  // Y position where fading starts at bottom
-    float fadeWidth = 0.25;  // Width of fade zone (much more gradual)
     
     // Use raw offsets - let dots scroll continuously off-screen
     float offsetX = pc.offsetX;
@@ -37,10 +44,10 @@ void main() {
     // Create a continuous grid of dots - reduced range since dots are closer together
     for (float y = -0.5; y <= 1.5; y += spacing) {
         for (float x = -1.0; x <= 2.0; x += spacing) {
-            float dotPosY = y + wrappedOffsetY;
+            float dotY = y + wrappedOffsetY;
             
             // Early exit: skip dots that are completely off-screen vertically
-            if (dotPosY < -fadeWidth || dotPosY > 1.0 + fadeWidth) {
+            if (dotY < -fadeWidth || dotY > 1.0 + fadeWidth) {
                 continue;
             }
             
@@ -71,23 +78,23 @@ void main() {
             
             // Vertical fade: fade at top and bottom, completely fade out center
             float verticalFade = 1.0;
-            // dotPosY already calculated above for early exit
+            // dotY already calculated above for early exit
             
             // Fade zone at top (above topEdgeY fades out towards screen top)
-            if (dotPosY < topEdgeY) {
-                float distFromTop = dotPosY;
+            if (dotY < topEdgeY) {
+                float distFromTop = dotY;
                 verticalFade *= smoothstep(topEdgeY - fadeWidth, topEdgeY, distFromTop);
             }
             // Fade zone at bottom (below bottomEdgeY fades out towards screen bottom)
-            else if (dotPosY > bottomEdgeY) {
-                float distFromBottom = 1.0 - dotPosY;
+            else if (dotY > bottomEdgeY) {
+                float distFromBottom = 1.0 - dotY;
                 verticalFade *= smoothstep(1.0 - bottomEdgeY - fadeWidth, 1.0 - bottomEdgeY, distFromBottom);
             }
             // Center area - fade out completely
             else {
                 // Calculate distance from nearest edge (top or bottom)
-                float distFromTopEdge = dotPosY - topEdgeY;
-                float distFromBottomEdge = bottomEdgeY - dotPosY;
+                float distFromTopEdge = dotY - topEdgeY;
+                float distFromBottomEdge = bottomEdgeY - dotY;
                 float distFromNearestEdge = min(distFromTopEdge, distFromBottomEdge);
                 verticalFade *= smoothstep(fadeWidth, 0.0, distFromNearestEdge);
             }
