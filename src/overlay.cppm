@@ -7,6 +7,7 @@ module;
 #include <fstream>
 #include <array>
 #include <chrono>
+#include <cmath>
 
 export module motionsafe.overlay;
 
@@ -111,6 +112,10 @@ struct SwapchainOverlay {
     // Integrated position offset for smooth motion
     float offsetX = 0.0f;
     float offsetY = 0.0f;
+    
+    // Smoothed velocity for momentum effect
+    float smoothedVelX = 0.0f;
+    float smoothedVelY = 0.0f;
 };
 
 // Global overlay state
@@ -584,6 +589,8 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
     overlay.lastFrameTime = overlay.startTime;
     overlay.offsetX = 0.0f;
     overlay.offsetY = 0.0f;
+    overlay.smoothedVelX = 0.0f;
+    overlay.smoothedVelY = 0.0f;
     
     std::cout << "[MotionSafe] Overlay resources initialized successfully" << std::endl;
     return true;
@@ -662,13 +669,35 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     float deltaTime = std::chrono::duration<float>(now - overlay.lastFrameTime).count();
     overlay.lastFrameTime = now;
     
+    // Clamp delta time to avoid huge jumps (e.g., when paused/resumed)
+    deltaTime = std::min(deltaTime, 0.1f);
+    
+    // Apply momentum/inertia smoothing to velocity
+    // Lower smoothing factor = more lag/momentum (0.0 = no change, 1.0 = instant response)
+    const float momentumSmoothing = 0.08f;  // Reduced for more momentum/smoothness
+    overlay.smoothedVelX = overlay.smoothedVelX + (motionData.smoothedVelX - overlay.smoothedVelX) * momentumSmoothing;
+    overlay.smoothedVelY = overlay.smoothedVelY + (motionData.smoothedVelY - overlay.smoothedVelY) * momentumSmoothing;
+    
+    // Apply velocity ceiling to prevent dots from moving too fast
+    const float maxVelocity = 1.0f;  // Increased maximum velocity in units per second
+    float velX = overlay.smoothedVelX;
+    float velY = overlay.smoothedVelY;
+    
+    // Clamp velocity magnitude
+    float velMagnitude = std::sqrt(velX * velX + velY * velY);
+    if (velMagnitude > maxVelocity) {
+        float scale = maxVelocity / velMagnitude;
+        velX *= scale;
+        velY *= scale;
+    }
+    
     // Integrate velocity to get smooth position offset (dots move opposite to device motion)
-    overlay.offsetX += -motionData.smoothedVelX * deltaTime;
-    overlay.offsetY += -motionData.smoothedVelY * deltaTime;
+    overlay.offsetX += -velX * deltaTime;
+    overlay.offsetY += -velY * deltaTime;
     
     float elapsedTime = std::chrono::duration<float>(now - overlay.startTime).count();
     
-    // Wrap offsets in C++ to avoid shader artifacts
+    // Wrap offsets at spacing boundaries for seamless grid repetition
     const float spacing = 0.2f;
     float wrappedOffsetX = std::fmod(overlay.offsetX, spacing);
     float wrappedOffsetY = std::fmod(overlay.offsetY, spacing);

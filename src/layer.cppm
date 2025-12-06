@@ -412,8 +412,6 @@ VkResult QueuePresentImpl(
     VkQueue queue,
     const VkPresentInfoKHR* pPresentInfo) {
     
-    std::cout << "[MotionSafe] vkQueuePresentKHR called" << std::endl;
-    
     // Get the device that owns this queue
     VkDevice device = DispatchManager::GetInstance().GetQueueDevice(queue);
     if (device == VK_NULL_HANDLE) {
