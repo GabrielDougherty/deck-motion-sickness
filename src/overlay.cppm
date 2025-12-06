@@ -106,6 +106,11 @@ struct SwapchainOverlay {
     
     // Animation timing
     std::chrono::steady_clock::time_point startTime;
+    std::chrono::steady_clock::time_point lastFrameTime;
+    
+    // Integrated position offset for smooth motion
+    float offsetX = 0.0f;
+    float offsetY = 0.0f;
 };
 
 // Global overlay state
@@ -121,7 +126,7 @@ static std::vector<char> ReadShaderFile(const char* filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
     
     if (!file.is_open()) {
-        std::cerr << "[MotionSafe] Failed to open shader file: " << filename << std::endl;
+        // Don't spam logs - we try multiple paths
         return {};
     }
     
@@ -281,10 +286,10 @@ void UnregisterSwapchain(VkSwapchainKHR swapchain) {
  * @return true if both shader modules were created successfully, false otherwise
  */
 static bool CreateShaderModules(SwapchainOverlay& overlay) {
-    // Try multiple shader locations: system install, local install, relative path
+    // Try multiple shader locations: user install first (no permission issues), then system, then relative path
     std::vector<std::string> shader_paths = {
-        "/usr/lib/shaders/",
         std::string(getenv("HOME") ? getenv("HOME") : "") + "/.local/lib/shaders/",
+        "/usr/lib/shaders/",
         "shaders/"
     };
     
@@ -294,6 +299,7 @@ static bool CreateShaderModules(SwapchainOverlay& overlay) {
         vertCode = ReadShaderFile((path + "motion_overlay.vert.spv").c_str());
         fragCode = ReadShaderFile((path + "motion_overlay.frag.spv").c_str());
         if (!vertCode.empty() && !fragCode.empty()) {
+            std::cout << "[MotionSafe] Loaded shaders from: " << path << std::endl;
             break;
         }
     }
@@ -575,6 +581,9 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
     
     // Initialize animation start time
     overlay.startTime = std::chrono::steady_clock::now();
+    overlay.lastFrameTime = overlay.startTime;
+    overlay.offsetX = 0.0f;
+    overlay.offsetY = 0.0f;
     
     std::cout << "[MotionSafe] Overlay resources initialized successfully" << std::endl;
     return true;
@@ -648,16 +657,30 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     // Bind pipeline
     dispatch->CmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, overlay.pipeline);
     
-    // Calculate elapsed time
+    // Calculate delta time and update integrated position
     auto now = std::chrono::steady_clock::now();
+    float deltaTime = std::chrono::duration<float>(now - overlay.lastFrameTime).count();
+    overlay.lastFrameTime = now;
+    
+    // Integrate velocity to get smooth position offset (dots move opposite to device motion)
+    overlay.offsetX += -motionData.smoothedVelX * deltaTime;
+    overlay.offsetY += -motionData.smoothedVelY * deltaTime;
+    
     float elapsedTime = std::chrono::duration<float>(now - overlay.startTime).count();
     
-    // Push constants: aspect ratio, time, and motion velocity
+    // Wrap offsets in C++ to avoid shader artifacts
+    const float spacing = 0.2f;
+    float wrappedOffsetX = std::fmod(overlay.offsetX, spacing);
+    float wrappedOffsetY = std::fmod(overlay.offsetY, spacing);
+    if (wrappedOffsetX < 0) wrappedOffsetX += spacing;
+    if (wrappedOffsetY < 0) wrappedOffsetY += spacing;
+    
+    // Push constants: aspect ratio, time, and wrapped offsets
     float pushConstants[4] = {
         static_cast<float>(overlay.width) / static_cast<float>(overlay.height),
         elapsedTime,
-        motionData.smoothedVelX,
-        motionData.smoothedVelY
+        wrappedOffsetX,
+        wrappedOffsetY
     };
     dispatch->CmdPushConstants(cmd, overlay.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pushConstants), pushConstants);
     

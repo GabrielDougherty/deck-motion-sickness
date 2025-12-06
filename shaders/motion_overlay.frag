@@ -8,8 +8,8 @@ layout(location = 0) out vec4 outColor;
 layout(push_constant) uniform PushConstants {
     float aspectRatio;  // width / height
     float time;         // elapsed time in seconds
-    float velocityX;    // horizontal motion velocity
-    float velocityY;    // vertical motion velocity
+    float offsetX;      // integrated horizontal offset
+    float offsetY;      // integrated vertical offset
 } pc;
 
 void main() {
@@ -20,48 +20,60 @@ void main() {
     // Dot parameters
     float radius = 0.05;
     float spacing = 0.2;  // Space between dots
-    float edgeDistance = 0.1;  // Distance from edge
+    float topEdgeY = 0.05;  // Y position of top edge dots (closer to top)
+    float bottomEdgeY = 0.95;  // Y position of bottom edge dots (closer to bottom)
+    float fadeWidth = 0.25;  // Width of fade zone (much more gradual)
     
-    // Calculate motion-based offset
-    // Move dots in OPPOSITE direction of device motion
-    // If device moves right (positive velocityX), dots move left (negative offset)
-    float baseSpeed = 0.1;  // Base animation speed when no motion detected
-    float motionScale = 2.0;  // How much to scale the motion effect
-    
-    // Use velocity to create counter-motion, fall back to base animation if no motion
-    float velocityMagnitude = length(vec2(pc.velocityX, pc.velocityY));
-    float offsetX = 0.0;
-    float offsetY = 0.0;
-    
-    if (velocityMagnitude > 0.01) {
-        // Motion detected - move opposite to velocity
-        offsetX = -pc.velocityX * motionScale * pc.time;
-        offsetY = -pc.velocityY * motionScale * pc.time;
-    } else {
-        // No motion detected - use base animation
-        offsetX = mod(pc.time * baseSpeed, spacing);
-    }
-    
-    // Wrap offsets to spacing interval
-    offsetX = mod(offsetX, spacing);
-    offsetY = mod(offsetY, spacing);
+    // Use integrated offsets directly (no wrapping)
+    float offsetX = pc.offsetX;
+    float offsetY = pc.offsetY;
     
     float maxAlpha = 0.0;
     
-    // Top edge dots
-    for (float x = edgeDistance - spacing; x <= 1.0; x += spacing) {
-        vec2 dotPos = vec2((x + offsetX) * pc.aspectRatio, edgeDistance + offsetY);
+    // Top edge dots - extend range to cover extra dots that might scroll in
+    for (float x = -2.0; x <= 2.0; x += spacing) {
+        vec2 dotPos = vec2((x + offsetX) * pc.aspectRatio, topEdgeY + offsetY);
         float dist = distance(correctedUV, dotPos);
         float alpha = smoothstep(radius + 0.01, radius, dist);
-        maxAlpha = max(maxAlpha, alpha);
+        
+        // Horizontal fade bands: fade above and below the top dot line
+        float edgeFade = 1.0;
+        
+        // Fade zone above top dots (screen top to topEdgeY)
+        if (correctedUV.y / pc.aspectRatio < topEdgeY) {
+            float distFromTop = correctedUV.y / pc.aspectRatio;
+            edgeFade *= smoothstep(topEdgeY - fadeWidth, topEdgeY, distFromTop);
+        }
+        // Fade zone below top dots (topEdgeY to topEdgeY + fadeWidth)
+        if (correctedUV.y / pc.aspectRatio > topEdgeY && correctedUV.y / pc.aspectRatio < topEdgeY + fadeWidth) {
+            float distFromTopEdge = correctedUV.y / pc.aspectRatio - topEdgeY;
+            edgeFade *= smoothstep(fadeWidth, 0.0, distFromTopEdge);
+        }
+        
+        maxAlpha = max(maxAlpha, alpha * edgeFade);
     }
     
     // Bottom edge dots
-    for (float x = edgeDistance - spacing; x <= 1.0; x += spacing) {
-        vec2 dotPos = vec2((x + offsetX) * pc.aspectRatio, 0.9 + offsetY);
+    for (float x = -2.0; x <= 2.0; x += spacing) {
+        vec2 dotPos = vec2((x + offsetX) * pc.aspectRatio, bottomEdgeY + offsetY);
         float dist = distance(correctedUV, dotPos);
         float alpha = smoothstep(radius + 0.01, radius, dist);
-        maxAlpha = max(maxAlpha, alpha);
+        
+        // Horizontal fade bands: fade above and below the bottom dot line
+        float edgeFade = 1.0;
+        
+        // Fade zone above bottom dots (bottomEdgeY - fadeWidth to bottomEdgeY)
+        if (correctedUV.y / pc.aspectRatio < bottomEdgeY && correctedUV.y / pc.aspectRatio > bottomEdgeY - fadeWidth) {
+            float distFromBottomEdge = bottomEdgeY - correctedUV.y / pc.aspectRatio;
+            edgeFade *= smoothstep(fadeWidth, 0.0, distFromBottomEdge);
+        }
+        // Fade zone below bottom dots (bottomEdgeY to screen bottom)
+        if (correctedUV.y / pc.aspectRatio > bottomEdgeY) {
+            float distFromBottom = 1.0 - correctedUV.y / pc.aspectRatio;
+            edgeFade *= smoothstep(1.0 - bottomEdgeY - fadeWidth, 1.0 - bottomEdgeY, distFromBottom);
+        }
+        
+        maxAlpha = max(maxAlpha, alpha * edgeFade);
     }
     
     // Red color with alpha

@@ -4,6 +4,11 @@
 #include <cstring>
 #include <iostream>
 
+#ifdef __APPLE__
+#include <chrono>
+#include <cmath>
+#endif
+
 namespace motionsafe {
 
 SdHidReader::SdHidReader() 
@@ -22,6 +27,12 @@ bool SdHidReader::Open() {
         return true;  // Already open
     }
     
+#ifdef __APPLE__
+    // macOS: Use fake mode for testing
+    std::cout << "[MotionSafe][HID] macOS detected - using FAKE gyro data for testing" << std::endl;
+    fd_ = -2;  // Special value to indicate fake mode
+    return true;
+#else
     std::cout << "[MotionSafe][HID] Attempting to open hidraw devices..." << std::endl;
     
     // Try all hidraw devices (Steam Deck controller is usually hidraw2 or hidraw3)
@@ -49,6 +60,7 @@ bool SdHidReader::Open() {
     
     std::cerr << "[MotionSafe][HID] ERROR: Failed to open any hidraw device" << std::endl;
     return false;
+#endif
 }
 
 void SdHidReader::Close() {
@@ -59,14 +71,41 @@ void SdHidReader::Close() {
 }
 
 bool SdHidReader::IsOpen() const {
-    return fd_ >= 0;
+    return fd_ >= 0 || fd_ == -2;  // -2 is fake mode
 }
 
 bool SdHidReader::ReadFrame(SdHidFrame& frame) {
-    if (fd_ < 0) {
+    if (fd_ < 0 && fd_ != -2) {
         return false;
     }
     
+#ifdef __APPLE__
+    if (fd_ == -2) {
+        // macOS fake mode: Generate smooth sine wave motion
+        static auto start_time = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        float elapsed = std::chrono::duration<float>(now - start_time).count();
+        
+        // Generate smooth circular motion at different frequencies
+        // Scale values to match typical Steam Deck gyro range (~1000-2000 for moderate motion)
+        float scale = 1500.0f;  // Moderate motion amplitude
+        frame.GyroAxisRightToLeft = static_cast<int16_t>(std::sin(elapsed * 0.3f) * scale);  // Pitch (slow)
+        frame.GyroAxisTopToBottom = static_cast<int16_t>(std::cos(elapsed * 0.4f) * scale);  // Yaw (medium)
+        frame.GyroAxisFrontToBack = static_cast<int16_t>(std::sin(elapsed * 0.2f) * scale);  // Roll (slowest)
+        
+        // Debug: Log fake gyro values occasionally
+        static int frame_count = 0;
+        if (frame_count++ % 60 == 0) {  // Every second at 60fps
+            std::cout << "[MotionSafe][HID][FAKE] Gyro: X=" << frame.GyroAxisRightToLeft
+                      << " Y=" << frame.GyroAxisTopToBottom
+                      << " Z=" << frame.GyroAxisFrontToBack << std::endl;
+        }
+        
+        return true;
+    }
+#endif
+    
+    // Real device mode
     // Read 64 bytes
     ssize_t bytes_read = read(fd_, buffer_.data(), FRAME_SIZE);
     

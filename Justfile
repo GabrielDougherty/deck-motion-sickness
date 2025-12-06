@@ -1,8 +1,15 @@
+run-vkcube-auto:
+    #!/usr/bin/env zsh
+    source ./setup-vulkan-env.sh
+    echo "Running vkcube with motion sickness overlay for 2 seconds..."
+    VK_INSTANCE_LAYERS="VK_LAYER_MOTIONSAFE_overlay" /opt/homebrew/Cellar/vulkan-tools/1.4.328.1/cube/vkcube.app/Contents/MacOS/vkcube || true
+
+
 run-vkcube:
     #!/usr/bin/env zsh
     source ./setup-vulkan-env.sh
     echo "Running vkcube with motion sickness overlay for 2 seconds..."
-    VK_INSTANCE_LAYERS="VK_LAYER_MOTIONSAFE_overlay" timeout 2 /opt/homebrew/Cellar/vulkan-tools/1.4.328.1/cube/vkcube.app/Contents/MacOS/vkcube || true
+    VK_INSTANCE_LAYERS="VK_LAYER_MOTIONSAFE_overlay" timeout 10 /opt/homebrew/Cellar/vulkan-tools/1.4.328.1/cube/vkcube.app/Contents/MacOS/vkcube || true
     echo ""
     echo "Did the overlay render correctly? (y/n/q to quit)"
     read -k 1 response

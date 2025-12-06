@@ -283,6 +283,13 @@ VkResult CreateDeviceImpl(
         if (result == VK_SUCCESS) {
             DispatchManager::GetInstance().InitDeviceDispatchTable(*pDevice, next_gdpa);
             std::cout << "[MotionSafe] Device created successfully" << std::endl;
+            
+            // Initialize overlay system on first device creation
+            static bool overlay_initialized = false;
+            if (!overlay_initialized) {
+                overlay::Initialize();
+                overlay_initialized = true;
+            }
         }
         
         return result;

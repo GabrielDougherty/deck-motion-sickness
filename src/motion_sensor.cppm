@@ -2,6 +2,7 @@ module;
 
 #include <iostream>
 #include <chrono>
+#include <algorithm>
 #include "sd_hid_reader.h"
 
 export module motionsafe.motion_sensor;
@@ -105,17 +106,22 @@ void Update() {
     
     // Convert gyro values to velocities
     // The gyro values are int16_t, need to scale them appropriately
-    // Based on testing, we'll need to determine the right scale factor
-    const float GYRO_SCALE = 0.0001f;  // TODO: Tune this value
+    // Typical Steam Deck gyro values for moderate motion: ~2000-4000
+    const float GYRO_SCALE = 0.0003f;  // Scale to reasonable velocity range
+    const float MAX_VELOCITY = 0.3f;   // Cap maximum velocity for smooth animation
     
     // Apply exponential smoothing to velocity
-    const float smoothing = 0.1f;  // Lower = smoother but more lag
+    const float smoothing = 0.15f;  // Higher = more responsive, lower = smoother
     
     // Map gyro axes to screen movement
     // Roll (Z axis) affects horizontal movement
     // Pitch (X axis) affects vertical movement
     float targetVelX = -frame.GyroAxisFrontToBack * GYRO_SCALE;  // Roll -> horizontal
     float targetVelY = frame.GyroAxisRightToLeft * GYRO_SCALE;   // Pitch -> vertical
+    
+    // Clamp velocities to maximum
+    targetVelX = std::clamp(targetVelX, -MAX_VELOCITY, MAX_VELOCITY);
+    targetVelY = std::clamp(targetVelY, -MAX_VELOCITY, MAX_VELOCITY);
     
     g_sensor.data.smoothedVelX += (targetVelX - g_sensor.data.smoothedVelX) * smoothing;
     g_sensor.data.smoothedVelY += (targetVelY - g_sensor.data.smoothedVelY) * smoothing;
@@ -127,9 +133,10 @@ void Update() {
     
     // Debug: Log velocities occasionally
     static int update_count = 0;
-    if (update_count++ % 250 == 0) {  // Every ~1 second
+    if (update_count++ % 60 == 0) {  // More frequent logging
         std::cout << "[MotionSafe][SENSOR] VelX=" << g_sensor.data.smoothedVelX 
                   << " VelY=" << g_sensor.data.smoothedVelY 
+                  << " (target: " << targetVelX << ", " << targetVelY << ")"
                   << " (raw gyro: X=" << frame.GyroAxisRightToLeft
                   << " Y=" << frame.GyroAxisTopToBottom
                   << " Z=" << frame.GyroAxisFrontToBack << ")" << std::endl;
