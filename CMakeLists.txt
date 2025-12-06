@@ -62,7 +62,6 @@ include_directories(
 set(LAYER_SOURCES
     src/layer.cpp
     src/entry_points.cpp
-    src/sd_hid_reader.cpp
 )
 
 # Build shared library
@@ -73,6 +72,7 @@ target_sources(motionsafe_overlay
         ${LAYER_SOURCES}
     PUBLIC
         FILE_SET CXX_MODULES FILES
+            src/sd_hid_reader.cppm
             src/dispatch_table.cppm
             src/motion_sensor.cppm
             src/layer.cppm

@@ -65,7 +65,7 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(
     if (!pName) {
         return nullptr;
     }
-    
+
     if (strcmp(pName, "vkGetDeviceProcAddr") == 0) {
         return reinterpret_cast<PFN_vkVoidFunction>(vkGetDeviceProcAddr);
     }

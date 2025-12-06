@@ -3,9 +3,10 @@ module;
 #include <iostream>
 #include <chrono>
 #include <algorithm>
-#include "sd_hid_reader.h"
 
 export module motionsafe.motion_sensor;
+
+import motionsafe.sd_hid_reader;
 
 export namespace motionsafe {
 namespace motion_sensor {

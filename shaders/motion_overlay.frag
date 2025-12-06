@@ -46,9 +46,10 @@ void main() {
             
             vec2 dotPos = vec2((x + wrappedOffsetX) * pc.aspectRatio, y + wrappedOffsetY);
             float dist = distance(correctedUV, dotPos);
+            // alpha: how close the pixel is to the dot center
             float alpha = smoothstep(radius + 0.01, radius, dist);
             
-            // Early exit: if dot is too far away to be visible
+            // Performance optimization: skip if fragment is outside dot's circular radius
             if (alpha < 0.001) {
                 continue;
             }
