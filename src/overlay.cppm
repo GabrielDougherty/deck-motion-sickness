@@ -11,6 +11,7 @@ module;
 export module motionsafe.overlay;
 
 import motionsafe.dispatch_table;
+import motionsafe.motion_sensor;
 
 export namespace motionsafe {
 namespace overlay {
@@ -213,10 +214,12 @@ static bool CreateRenderPass(SwapchainOverlay& overlay, DeviceDispatchTable* dis
 
 void Initialize() {
     std::cout << "[MotionSafe] Overlay system initialized" << std::endl;
+    motion_sensor::Initialize();
 }
 
 void Shutdown() {
     std::cout << "[MotionSafe] Overlay system shutdown" << std::endl;
+    motion_sensor::Shutdown();
     // TODO: Clean up all overlay resources
     g_swapchainOverlays.clear();
 }
@@ -321,11 +324,11 @@ static bool CreateShaderModules(SwapchainOverlay& overlay) {
  * @return true if pipeline layout creation succeeded, false otherwise
  */
 static bool CreatePipelineLayout(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
-    // Push constant for aspect ratio and time
+    // Push constant for aspect ratio, time, and motion velocity
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(float) * 2;  // aspect ratio + time
+    pushConstantRange.size = sizeof(float) * 4;  // aspect ratio + time + velocityX + velocityY
     
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -616,6 +619,10 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
         return;
     }
     
+    // Update motion sensor data
+    motion_sensor::Update();
+    const auto& motionData = motion_sensor::GetMotionData();
+    
     // Record command buffer for this image
     VkCommandBuffer cmd = overlay.commandBuffers[imageIndex];
     
@@ -645,10 +652,12 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     auto now = std::chrono::steady_clock::now();
     float elapsedTime = std::chrono::duration<float>(now - overlay.startTime).count();
     
-    // Push constants: aspect ratio and time
-    float pushConstants[2] = {
+    // Push constants: aspect ratio, time, and motion velocity
+    float pushConstants[4] = {
         static_cast<float>(overlay.width) / static_cast<float>(overlay.height),
-        elapsedTime
+        elapsedTime,
+        motionData.smoothedVelX,
+        motionData.smoothedVelY
     };
     dispatch->CmdPushConstants(cmd, overlay.pipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pushConstants), pushConstants);
     
