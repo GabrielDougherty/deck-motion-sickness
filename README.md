@@ -16,10 +16,10 @@ Download Vulkan SDK from https://vulkan.lunarg.com/sdk/home
 
 ```bash
 # Arch Linux / Steam Deck
-sudo pacman -S cmake ninja clang vulkan-headers vulkan-icd-loader
+sudo pacman -S cmake ninja clang vulkan-headers vulkan-icd-loader linux-api-headers glibc
 
 # Ubuntu/Debian
-sudo apt install cmake ninja-build clang vulkan-tools libvulkan-dev
+sudo apt install cmake ninja-build clang vulkan-tools libvulkan-dev linux-libc-dev
 ```
 
 ## Building
@@ -42,11 +42,17 @@ ninja
 ninja install
 ```
 
-### Linux
+### Linux/Steam Deck
 
 ```bash
-cmake -B build -G Ninja
+# Configure with Clang (required for C++23 modules)
+cmake -B build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_CXX_COMPILER=clang++
+
 ninja -C build
+
+# Install to user directory (no sudo needed)
 ninja -C build install
 ```
 

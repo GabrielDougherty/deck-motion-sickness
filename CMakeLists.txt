@@ -124,9 +124,9 @@ if(APPLE)
     set(LAYER_INSTALL_DIR "$ENV{HOME}/.local/share/vulkan/explicit_layer.d" CACHE PATH "Layer manifest installation directory")
     set(LIBRARY_INSTALL_DIR "$ENV{HOME}/.local/lib" CACHE PATH "Library installation directory")
 elseif(UNIX)
-    # Linux: Install to system directories
-    set(LAYER_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/share/vulkan/implicit_layer.d" CACHE PATH "Layer manifest installation directory")
-    set(LIBRARY_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/lib" CACHE PATH "Library installation directory")
+    # Linux: Install to user's local directory (works with Proton/Steam)
+    set(LAYER_INSTALL_DIR "$ENV{HOME}/.local/share/vulkan/implicit_layer.d" CACHE PATH "Layer manifest installation directory")
+    set(LIBRARY_INSTALL_DIR "$ENV{HOME}/.local/lib" CACHE PATH "Library installation directory")
 endif()
 
 # Set the library path in the manifest
