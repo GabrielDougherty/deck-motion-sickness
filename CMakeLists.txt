@@ -145,6 +145,7 @@ install(TARGETS motionsafe_overlay
 
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_MOTIONSAFE_overlay.json
     DESTINATION ${LAYER_INSTALL_DIR}
+    PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 )
 
 # Post-install script to update loader settings (macOS only)
