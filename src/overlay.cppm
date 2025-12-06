@@ -84,6 +84,7 @@ namespace overlay {
 
 // Overlay state per swapchain
 struct SwapchainOverlay {
+    // Vulkan resource handles - accessed frequently during rendering
     VkDevice device = VK_NULL_HANDLE;
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
     
@@ -100,22 +101,27 @@ struct SwapchainOverlay {
     VkCommandPool commandPool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> commandBuffers;
     
-    uint32_t width = 0;
-    uint32_t height = 0;
-    VkFormat format = VK_FORMAT_UNDEFINED;
-    bool initialized = false;
+    // Swapchain properties - grouped for cache efficiency
+    struct Properties {
+        uint32_t width = 0;
+        uint32_t height = 0;
+        VkFormat format = VK_FORMAT_UNDEFINED;
+        bool initialized = false;
+    } props;
     
-    // Animation timing
-    std::chrono::steady_clock::time_point startTime;
-    std::chrono::steady_clock::time_point lastFrameTime;
-    
-    // Integrated position offset for smooth motion
-    float offsetX = 0.0f;
-    float offsetY = 0.0f;
-    
-    // Smoothed velocity for momentum effect
-    float smoothedVelX = 0.0f;
-    float smoothedVelY = 0.0f;
+    // Animation state - grouped for cache efficiency
+    struct AnimationState {
+        std::chrono::steady_clock::time_point startTime;
+        std::chrono::steady_clock::time_point lastFrameTime;
+        
+        // Integrated position offset for smooth motion
+        float offsetX = 0.0f;
+        float offsetY = 0.0f;
+        
+        // Smoothed velocity for momentum effect
+        float smoothedVelX = 0.0f;
+        float smoothedVelY = 0.0f;
+    } anim;
 };
 
 // Global overlay state
@@ -189,7 +195,7 @@ static VkShaderModule CreateShaderModule(VkDevice device, const std::vector<char
  */
 static bool CreateRenderPass(SwapchainOverlay& overlay, DeviceDispatchTable* dispatch) {
     VkAttachmentDescription colorAttachment{};
-    colorAttachment.format = overlay.format;
+    colorAttachment.format = overlay.props.format;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;  // Load existing content
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -241,10 +247,10 @@ void RegisterSwapchain(VkDevice device, VkSwapchainKHR swapchain,
     overlay.device = device;
     overlay.swapchain = swapchain;
     overlay.images = images;
-    overlay.width = width;
-    overlay.height = height;
-    overlay.format = format;
-    overlay.initialized = false;
+    overlay.props.width = width;
+    overlay.props.height = height;
+    overlay.props.format = format;
+    overlay.props.initialized = false;
     
     g_swapchainOverlays[swapchain] = overlay;
     
@@ -395,14 +401,14 @@ static bool CreateGraphicsPipeline(SwapchainOverlay& overlay, DeviceDispatchTabl
     VkViewport viewport{};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = static_cast<float>(overlay.width);
-    viewport.height = static_cast<float>(overlay.height);
+    viewport.width = static_cast<float>(overlay.props.width);
+    viewport.height = static_cast<float>(overlay.props.height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
     
     VkRect2D scissor{};
     scissor.offset = {0, 0};
-    scissor.extent = {overlay.width, overlay.height};
+    scissor.extent = {overlay.props.width, overlay.props.height};
     
     VkPipelineViewportStateCreateInfo viewportState{};
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -484,7 +490,7 @@ static bool CreateImageViewsAndFramebuffers(SwapchainOverlay& overlay, DeviceDis
         viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         viewInfo.image = overlay.images[i];
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = overlay.format;
+        viewInfo.format = overlay.props.format;
         viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         viewInfo.subresourceRange.baseMipLevel = 0;
         viewInfo.subresourceRange.levelCount = 1;
@@ -501,8 +507,8 @@ static bool CreateImageViewsAndFramebuffers(SwapchainOverlay& overlay, DeviceDis
         framebufferInfo.renderPass = overlay.renderPass;
         framebufferInfo.attachmentCount = 1;
         framebufferInfo.pAttachments = &overlay.imageViews[i];
-        framebufferInfo.width = overlay.width;
-        framebufferInfo.height = overlay.height;
+        framebufferInfo.width = overlay.props.width;
+        framebufferInfo.height = overlay.props.height;
         framebufferInfo.layers = 1;
         
         if (dispatch->CreateFramebuffer(overlay.device, &framebufferInfo, nullptr, &overlay.framebuffers[i]) != VK_SUCCESS) {
@@ -585,12 +591,12 @@ static bool InitializeOverlay(SwapchainOverlay& overlay) {
     if (!CreateCommandResources(overlay, dispatch)) return false;
     
     // Initialize animation start time
-    overlay.startTime = std::chrono::steady_clock::now();
-    overlay.lastFrameTime = overlay.startTime;
-    overlay.offsetX = 0.0f;
-    overlay.offsetY = 0.0f;
-    overlay.smoothedVelX = 0.0f;
-    overlay.smoothedVelY = 0.0f;
+    overlay.anim.startTime = std::chrono::steady_clock::now();
+    overlay.anim.lastFrameTime = overlay.anim.startTime;
+    overlay.anim.offsetX = 0.0f;
+    overlay.anim.offsetY = 0.0f;
+    overlay.anim.smoothedVelX = 0.0f;
+    overlay.anim.smoothedVelY = 0.0f;
     
     std::cout << "[MotionSafe] Overlay resources initialized successfully" << std::endl;
     return true;
@@ -622,12 +628,12 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     SwapchainOverlay& overlay = it->second;
     
     // Initialize on first use
-    if (!overlay.initialized) {
+    if (!overlay.props.initialized) {
         if (!InitializeOverlay(overlay)) {
             std::cerr << "[MotionSafe] Failed to initialize overlay" << std::endl;
             return;
         }
-        overlay.initialized = true;
+        overlay.props.initialized = true;
     }
     
     auto* dispatch = DispatchManager::GetInstance().GetDeviceDispatch(overlay.device);
@@ -657,7 +663,7 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     renderPassInfo.renderPass = overlay.renderPass;
     renderPassInfo.framebuffer = overlay.framebuffers[imageIndex];
     renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = {overlay.width, overlay.height};
+    renderPassInfo.renderArea.extent = {overlay.props.width, overlay.props.height};
     
     dispatch->CmdBeginRenderPass(cmd, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
     
@@ -666,8 +672,8 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     
     // Calculate delta time and update integrated position
     auto now = std::chrono::steady_clock::now();
-    float deltaTime = std::chrono::duration<float>(now - overlay.lastFrameTime).count();
-    overlay.lastFrameTime = now;
+    float deltaTime = std::chrono::duration<float>(now - overlay.anim.lastFrameTime).count();
+    overlay.anim.lastFrameTime = now;
     
     // Clamp delta time to avoid huge jumps (e.g., when paused/resumed)
     deltaTime = std::min(deltaTime, 0.1f);
@@ -675,13 +681,13 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     // Apply momentum/inertia smoothing to velocity
     // Lower smoothing factor = more lag/momentum (0.0 = no change, 1.0 = instant response)
     const float momentumSmoothing = 0.08f;  // Reduced for more momentum/smoothness
-    overlay.smoothedVelX = overlay.smoothedVelX + (motionData.smoothedVelX - overlay.smoothedVelX) * momentumSmoothing;
-    overlay.smoothedVelY = overlay.smoothedVelY + (motionData.smoothedVelY - overlay.smoothedVelY) * momentumSmoothing;
+    overlay.anim.smoothedVelX = overlay.anim.smoothedVelX + (motionData.smoothedVelX - overlay.anim.smoothedVelX) * momentumSmoothing;
+    overlay.anim.smoothedVelY = overlay.anim.smoothedVelY + (motionData.smoothedVelY - overlay.anim.smoothedVelY) * momentumSmoothing;
     
     // Apply velocity ceiling to prevent dots from moving too fast
     const float maxVelocity = 1.0f;  // Increased maximum velocity in units per second
-    float velX = overlay.smoothedVelX;
-    float velY = overlay.smoothedVelY;
+    float velX = overlay.anim.smoothedVelX;
+    float velY = overlay.anim.smoothedVelY;
     
     // Clamp velocity magnitude
     float velMagnitude = std::sqrt(velX * velX + velY * velY);
@@ -692,21 +698,21 @@ void RenderOverlay(VkQueue queue, VkSwapchainKHR swapchain, uint32_t imageIndex)
     }
     
     // Integrate velocity to get smooth position offset (dots move opposite to device motion)
-    overlay.offsetX += -velX * deltaTime;
-    overlay.offsetY += -velY * deltaTime;
+    overlay.anim.offsetX += -velX * deltaTime;
+    overlay.anim.offsetY += -velY * deltaTime;
     
-    float elapsedTime = std::chrono::duration<float>(now - overlay.startTime).count();
+    float elapsedTime = std::chrono::duration<float>(now - overlay.anim.startTime).count();
     
     // Wrap offsets at spacing boundaries for seamless grid repetition
     const float spacing = 0.12f;  // Match shader spacing
-    float wrappedOffsetX = std::fmod(overlay.offsetX, spacing);
-    float wrappedOffsetY = std::fmod(overlay.offsetY, spacing);
+    float wrappedOffsetX = std::fmod(overlay.anim.offsetX, spacing);
+    float wrappedOffsetY = std::fmod(overlay.anim.offsetY, spacing);
     if (wrappedOffsetX < 0) wrappedOffsetX += spacing;
     if (wrappedOffsetY < 0) wrappedOffsetY += spacing;
     
     // Push constants: aspect ratio, time, and wrapped offsets
     float pushConstants[4] = {
-        static_cast<float>(overlay.width) / static_cast<float>(overlay.height),
+        static_cast<float>(overlay.props.width) / static_cast<float>(overlay.props.height),
         elapsedTime,
         wrappedOffsetX,
         wrappedOffsetY
