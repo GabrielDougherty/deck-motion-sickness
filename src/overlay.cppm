@@ -278,8 +278,22 @@ void UnregisterSwapchain(VkSwapchainKHR swapchain) {
  * @return true if both shader modules were created successfully, false otherwise
  */
 static bool CreateShaderModules(SwapchainOverlay& overlay) {
-    auto vertCode = ReadShaderFile("shaders/motion_overlay.vert.spv");
-    auto fragCode = ReadShaderFile("shaders/motion_overlay.frag.spv");
+    // Try multiple shader locations: system install, local install, relative path
+    std::vector<std::string> shader_paths = {
+        "/usr/lib/shaders/",
+        std::string(getenv("HOME") ? getenv("HOME") : "") + "/.local/lib/shaders/",
+        "shaders/"
+    };
+    
+    std::vector<char> vertCode, fragCode;
+    
+    for (const auto& path : shader_paths) {
+        vertCode = ReadShaderFile((path + "motion_overlay.vert.spv").c_str());
+        fragCode = ReadShaderFile((path + "motion_overlay.frag.spv").c_str());
+        if (!vertCode.empty() && !fragCode.empty()) {
+            break;
+        }
+    }
     
     if (vertCode.empty() || fragCode.empty()) {
         std::cerr << "[MotionSafe] Failed to read shader files (did you compile them?)" << std::endl;

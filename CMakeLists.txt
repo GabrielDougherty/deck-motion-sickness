@@ -148,6 +148,43 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_MOTIONSAFE_overlay.json
     PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
 )
 
+# Install shaders
+install(FILES 
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/motion_overlay.vert.spv
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/motion_overlay.frag.spv
+    DESTINATION ${LIBRARY_INSTALL_DIR}/shaders
+)
+
+# On Linux, also install to system directories (requires sudo)
+if(UNIX AND NOT APPLE)
+    # Create system manifest with system library path
+    set(OLD_LIBRARY_PATH "${LIBRARY_PATH}")
+    set(LIBRARY_PATH "/usr/lib/libmotionsafe_overlay${LIBRARY_EXTENSION}")
+    configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/layer_manifest.json.in
+        ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_MOTIONSAFE_overlay_system.json
+        @ONLY
+    )
+    set(LIBRARY_PATH "${OLD_LIBRARY_PATH}")
+    
+    install(TARGETS motionsafe_overlay
+        LIBRARY DESTINATION /usr/lib
+    )
+    
+    # Install shaders to system directory too
+    install(FILES 
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/motion_overlay.vert.spv
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/motion_overlay.frag.spv
+        DESTINATION /usr/lib/shaders
+    )
+    
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/VK_LAYER_MOTIONSAFE_overlay_system.json
+        DESTINATION /usr/share/vulkan/implicit_layer.d
+        RENAME VK_LAYER_MOTIONSAFE_overlay.json
+        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+    )
+endif()
+
 # Post-install script to update loader settings (macOS only)
 if(APPLE)
     install(CODE "

@@ -52,8 +52,8 @@ cmake -B build -G Ninja \
 
 ninja -C build
 
-# Install to user directory (no sudo needed)
-ninja -C build install
+# Install to both user and system directories (system install requires sudo)
+sudo ninja -C build install
 ```
 
 ## Running
