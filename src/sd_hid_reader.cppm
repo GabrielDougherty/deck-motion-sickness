@@ -1,18 +1,13 @@
 module;
 
-#include <cstdint>
-#include <vector>
 #include <fcntl.h>
 #include <unistd.h>
+#include <cerrno>
 #include <cstring>
-#include <iostream>
-
-#ifdef __APPLE__
-#include <chrono>
-#include <cmath>
-#endif
 
 export module motionsafe.sd_hid_reader;
+
+import std;
 
 namespace motionsafe {
 

@@ -2,12 +2,10 @@ module;
 
 #include "layer.h"
 #include <vulkan/vulkan.h>
-#include <iostream>
-#include <cstring>
-#include <vector>
-#include <unordered_map>
 
 export module motionsafe.layer;
+
+import std;
 
 import motionsafe.dispatch_table;
 import motionsafe.overlay;

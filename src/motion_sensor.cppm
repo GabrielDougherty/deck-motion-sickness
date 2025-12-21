@@ -1,10 +1,8 @@
 module;
 
-#include <iostream>
-#include <chrono>
-#include <algorithm>
-
 export module motionsafe.motion_sensor;
+
+import std;
 
 import motionsafe.sd_hid_reader;
 

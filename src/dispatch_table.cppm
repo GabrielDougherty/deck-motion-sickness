@@ -1,11 +1,10 @@
 module;
 
 #include <vulkan/vulkan.h>
-#include <unordered_map>
-#include <mutex>
-#include <cstring>
 
 export module motionsafe.dispatch_table;
+
+import std;
 
 export namespace motionsafe {
 

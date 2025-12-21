@@ -1,15 +1,11 @@
 module;
 
 #include <vulkan/vulkan.h>
-#include <iostream>
-#include <vector>
-#include <unordered_map>
-#include <fstream>
-#include <array>
-#include <chrono>
-#include <cmath>
+#include <cstdlib>
 
 export module motionsafe.overlay;
+
+import std;
 
 import motionsafe.dispatch_table;
 import motionsafe.motion_sensor;

@@ -1,13 +1,14 @@
 cmake_minimum_required(VERSION 3.28)
+
+# Enable experimental C++ module support (must be before project())
+set(CMAKE_EXPERIMENTAL_CXX_MODULE_CMAKE_API "2182bf5c-ef0d-489a-91da-49dbc3090d2a")
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+
 project(MotionSafeLayer VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-
-# Enable experimental C++ module support
-set(CMAKE_EXPERIMENTAL_CXX_MODULE_CMAKE_API "2182bf5c-ef0d-489a-91da-49dbc3090d2a")
-set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 # On macOS, ensure SDK paths are available for module scanning
 if(APPLE)
@@ -47,9 +48,58 @@ function(add_shader TARGET SHADER)
     target_sources(${TARGET} PRIVATE ${SHADER_OUTPUT})
 endfunction()
 
+# Precompile C++23 std module for Clang
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # Find LLVM prefix
+    get_filename_component(LLVM_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    get_filename_component(LLVM_PREFIX "${LLVM_BIN_DIR}" DIRECTORY)
+    set(STD_CPPM "${LLVM_PREFIX}/share/libc++/v1/std.cppm")
+    set(STD_PCM "${CMAKE_BINARY_DIR}/std.pcm")
+    
+    if(EXISTS "${STD_CPPM}")
+        # Build the precompile command
+        set(PRECOMPILE_CMD
+            ${CMAKE_CXX_COMPILER}
+            -std=c++23
+            -stdlib=libc++
+            -Wno-reserved-module-identifier
+            --precompile
+            -o ${STD_PCM}
+            ${STD_CPPM}
+        )
+        
+        # Add -isysroot only if CMAKE_OSX_SYSROOT is set
+        if(CMAKE_OSX_SYSROOT)
+            list(APPEND PRECOMPILE_CMD -isysroot ${CMAKE_OSX_SYSROOT})
+        endif()
+        
+        # Add custom command to precompile std module
+        add_custom_command(
+            OUTPUT ${STD_PCM}
+            COMMAND ${PRECOMPILE_CMD}
+            DEPENDS ${STD_CPPM}
+            COMMENT "Precompiling C++23 std module"
+            VERBATIM
+        )
+        
+        # Create a custom target to ensure std.pcm is built
+        add_custom_target(std_module DEPENDS ${STD_PCM})
+        
+        message(STATUS "C++23 std module source: ${STD_CPPM}")
+        message(STATUS "C++23 std module output: ${STD_PCM}")
+    else()
+        message(WARNING "std.cppm not found at ${STD_CPPM}")
+    endif()
+endif()
+
 # Compiler flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     add_compile_options(-Wall -Wextra -Wpedantic)
+    
+    # Add import std support for Clang with precompiled module
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND EXISTS "${STD_CPPM}")
+        add_compile_options(-fmodule-file=std=${STD_PCM})
+    endif()
 endif()
 
 # Include directories
@@ -66,6 +116,11 @@ set(LAYER_SOURCES
 
 # Build shared library
 add_library(motionsafe_overlay SHARED)
+
+# Make the library depend on the std module being precompiled
+if(TARGET std_module)
+    add_dependencies(motionsafe_overlay std_module)
+endif()
 
 target_sources(motionsafe_overlay
     PRIVATE
