@@ -10,6 +10,9 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Export compile commands for VS Code IntelliSense/clangd
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # On macOS, ensure SDK paths are available for module scanning
 if(APPLE)
     execute_process(COMMAND xcrun --show-sdk-path OUTPUT_VARIABLE MACOS_SDK_PATH OUTPUT_STRIP_TRAILING_WHITESPACE)

@@ -152,7 +152,7 @@ static std::vector<char> ReadShaderFile(const char* filename) {
         return {};
     }
     
-    size_t fileSize = static_cast<size_t>(file.tellg());
+    std::size_t fileSize = static_cast<std::size_t>(file.tellg());
     std::vector<char> buffer(fileSize);
     
     file.seekg(0);
@@ -504,7 +504,7 @@ static bool CreateImageViewsAndFramebuffers(SwapchainOverlay& overlay, DeviceDis
     overlay.imageViews.resize(overlay.images.size());
     overlay.framebuffers.resize(overlay.images.size());
     
-    for (size_t i = 0; i < overlay.images.size(); i++) {
+    for (std::size_t i = 0; i < overlay.images.size(); i++) {
         VkImageViewCreateInfo viewInfo{};
         viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         viewInfo.image = overlay.images[i];
@@ -583,7 +583,7 @@ static bool CreateCommandResources(SwapchainOverlay& overlay, DeviceDispatchTabl
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // Start signaled so first frame doesn't block
     
-    for (size_t i = 0; i < overlay.images.size(); i++) {
+    for (std::size_t i = 0; i < overlay.images.size(); i++) {
         if (dispatch->CreateFence(overlay.device, &fenceInfo, nullptr, &overlay.renderFences[i]) != VK_SUCCESS) {
             std::cerr << "[MotionSafe] Failed to create fence " << i << std::endl;
             return false;

@@ -1,0 +1,22 @@
+CompileFlags:
+  Add:
+    - -Wno-unknown-warning-option
+    - -ferror-limit=0
+    - -std=c++23
+  Remove:
+    - -fmodules-cache-path=*
+  
+  # Compiler path for files not in compile_commands.json
+  Compiler: /opt/homebrew/opt/llvm/bin/clang++
+    
+Diagnostics:
+  # Clangd 21's experimental modules support can't fully resolve std module yet
+  # These are false positives - code builds fine with CMake
+  Suppress:
+    - unknown_typename
+    - module_not_found
+  UnusedIncludes: None
+    
+Index:
+  Background: Build
+  StandardLibrary: Yes
